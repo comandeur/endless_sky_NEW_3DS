@@ -758,16 +758,16 @@ void Gfx::UploadPixels(C3D_Tex *tex, const uint32_t *rgba, int width, int height
 	u8 *data = static_cast<u8 *>(tex->data);
 	memset(data, 0, tex->size);
 
-	// The source pixels are in memory order R, G, B, A (little endian ABGR).
+	// The source pixels use the layout of the game's ImageBuffer: 0xAARRGGBB.
 	for(int y = 0; y < height; ++y)
 	{
 		const uint32_t *row = rgba + static_cast<size_t>(y) * stride;
 		for(int x = 0; x < width; ++x)
 		{
 			uint32_t p = row[x];
-			u8 r = p & 0xFF;
+			u8 b = p & 0xFF;
 			u8 g = (p >> 8) & 0xFF;
-			u8 b = (p >> 16) & 0xFF;
+			u8 r = (p >> 16) & 0xFF;
 			u8 a = p >> 24;
 			u32 offset = TiledOffset(x, y, texWidth);
 			switch(format)

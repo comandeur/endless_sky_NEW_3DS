@@ -11,9 +11,9 @@
  #include "text/WrappedText.h"
  
  #include <algorithm>
-@@ -1250,6 +1254,12 @@
- 	if(flash)
- 		FillShader::Fill(Point(), Screen::Dimensions(), Color(flash, flash));
+@@ -1315,6 +1319,12 @@
+ 		PointerShader::Unbind();
+ 	}
  
 +#ifdef __3DS__
 +	// Everything from here on is the heads-up display, which the 3DS shows on
@@ -21,6 +21,6 @@
 +	Display::BeginHud();
 +#endif
 +
- 	// Draw messages. Draw the most recent messages first, as some messages
- 	// may be wrapped onto multiple lines.
- 	const Font &font = FontSet::Get(Preferences::GetFontSize());
+ 	// Draw the heads-up display.
+ 	hud->Draw(info);
+ 	if(hud->HasPoint("radar"))

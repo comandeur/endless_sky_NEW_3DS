@@ -67,7 +67,7 @@ namespace {
 	};
 
 	// Leave this much linear memory for everything else (audio, render targets...).
-	constexpr size_t LINEAR_RESERVE = 10 << 20;
+	constexpr size_t LINEAR_RESERVE = 6 << 20;
 	// Don't evict sprites that were drawn this recently, in frames.
 	constexpr uint32_t MIN_AGE = 3;
 	// Limit how much loading work is in flight.

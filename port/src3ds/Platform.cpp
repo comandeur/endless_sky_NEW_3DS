@@ -21,6 +21,7 @@ this program. If not, see <https://www.gnu.org/licenses/>.
 #include <sys/stat.h>
 
 #include <cstdio>
+#include <algorithm>
 #include <cstdlib>
 
 using namespace std;
@@ -135,4 +136,52 @@ void Platform::FatalError(const string &message)
 	errorText(&error, ("Endless Sky has encountered an error and must close:\n\n" + message).c_str());
 	errorDisp(&error);
 	exit(1);
+}
+
+
+
+// Split the application's memory between the heap and the linear heap (the
+// memory that the GPU and the DSP can access). libctru caps the linear heap at
+// 32 MB, which is too little for the game's textures; here it gets 3/8 of the
+// memory instead (about 46 MB on a New 3DS running homebrew, 66 MB in the
+// extended memory mode). This replaces libctru's weak implementation.
+extern "C" {
+	extern char *fake_heap_start;
+	extern u32 __ctru_heap;
+	extern u32 __ctru_heap_size;
+	extern u32 __ctru_linear_heap;
+	extern u32 __ctru_linear_heap_size;
+
+	void __system_allocateHeaps(void)
+	{
+		Handle reslimit = 0;
+		if(R_FAILED(svcGetResourceLimit(&reslimit, CUR_PROCESS_HANDLE)))
+			svcBreak(USERBREAK_PANIC);
+		s64 maxCommit = 0;
+		s64 currentCommit = 0;
+		ResourceLimitType reslimitType = RESLIMIT_COMMIT;
+		svcGetResourceLimitLimitValues(&maxCommit, reslimit, &reslimitType, 1);
+		svcGetResourceLimitCurrentValues(&currentCommit, reslimit, &reslimitType, 1);
+		svcCloseHandle(reslimit);
+
+		u32 remaining = static_cast<u32>(maxCommit - currentCommit) & ~0xFFF;
+		u32 linear = (remaining / 8 * 3) & ~0xFFF;
+		linear = std::max<u32>(16 << 20, std::min<u32>(linear, 72 << 20));
+		if(linear > remaining / 2)
+			linear = (remaining / 2) & ~0xFFF;
+		__ctru_linear_heap_size = linear;
+		__ctru_heap_size = remaining - linear;
+
+		if(R_FAILED(svcControlMemory(&__ctru_heap, OS_HEAP_AREA_BEGIN, 0x0, __ctru_heap_size, MEMOP_ALLOC,
+				static_cast<MemPerm>(MEMPERM_READ | MEMPERM_WRITE))))
+			svcBreak(USERBREAK_PANIC);
+		if(R_FAILED(svcControlMemory(&__ctru_linear_heap, 0x0, 0x0, __ctru_linear_heap_size, MEMOP_ALLOC_LINEAR,
+				static_cast<MemPerm>(MEMPERM_READ | MEMPERM_WRITE))))
+			svcBreak(USERBREAK_PANIC);
+
+		mappableInit(OS_MAP_AREA_BEGIN, OS_MAP_AREA_END);
+
+		fake_heap_start = reinterpret_cast<char *>(__ctru_heap);
+		fake_heap_end = fake_heap_start + __ctru_heap_size;
+	}
 }

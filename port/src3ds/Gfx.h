@@ -154,8 +154,9 @@ namespace Gfx {
 	C3D_RenderTarget *CreateRenderTexture(C3D_Tex *tex, int width, int height);
 	void DeleteRenderTexture(C3D_RenderTarget *target, C3D_Tex *tex);
 
-	// Upload linear RGBA8 pixels (row 0 at the top, rows of `stride` pixels)
-	// into a texture, converting to the texture's format and tiling it.
+	// Upload 32-bit pixels in the layout of the game's ImageBuffer (0xAARRGGBB,
+	// row 0 at the top, rows of `stride` pixels) into a texture, converting to
+	// the texture's format and tiling it.
 	// Supported formats: RGBA8, RGBA4, A8, L8. Rows are flipped as needed so
 	// that v = 0 is the top of the image.
 	void UploadPixels(C3D_Tex *tex, const uint32_t *rgba, int width, int height, int stride);
