@@ -1,0 +1,34 @@
+--- a/source/image/Mask.h
++++ b/source/image/Mask.h
+@@ -34,6 +34,10 @@
+ public:
+ 	// Construct a mask from the alpha channel of an RGBA-formatted image.
+ 	void Create(const ImageBuffer &image, int frame, const std::string &fileName);
++#ifdef __3DS__
++	// Use outlines that were computed ahead of time (by the asset pipeline).
++	void SetOutlines(const std::vector<std::vector<Point>> &outlines);
++#endif
+ 
+ 	// Check whether a mask was successfully generated from the image.
+ 	bool IsLoaded() const;
+--- a/source/image/Mask.cpp
++++ b/source/image/Mask.cpp
+@@ -310,6 +310,18 @@
+ 
+ 
+ 
++#ifdef __3DS__
++void Mask::SetOutlines(const vector<vector<Point>> &outlines)
++{
++	this->outlines = outlines;
++	radius = 0.;
++	for(const auto &outline : this->outlines)
++		radius = max(radius, ComputeRadius(outline));
++}
++
++
++
++#endif
+ // Check whether a mask was successfully generated from the image.
+ bool Mask::IsLoaded() const
+ {

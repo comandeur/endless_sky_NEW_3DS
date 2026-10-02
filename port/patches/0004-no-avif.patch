@@ -1,0 +1,31 @@
+--- a/source/image/ImageBuffer.cpp
++++ b/source/image/ImageBuffer.cpp
+@@ -19,7 +19,9 @@
+ #include "ImageFileData.h"
+ #include "../Logger.h"
+ 
++#ifndef __3DS__
+ #include <avif/avif.h>
++#endif
+ #include <jpeglib.h>
+ #include <png.h>
+ 
+@@ -433,6 +435,10 @@
+ 	int ReadAVIF(const filesystem::path &path, ImageBuffer &buffer, int frame, bool alphaPreMultiplied,
+ 		bool onlyDimensions)
+ 	{
++#ifdef __3DS__
++		Logger::Log("AVIF images are not supported on the Nintendo 3DS: " + path.string(), Logger::Level::WARNING);
++		return 0;
++#else
+ 		unique_ptr<avifDecoder, void(*)(avifDecoder *)> decoder(avifDecoderCreate(), avifDecoderDestroy);
+ 		if(!decoder)
+ 		{
+@@ -554,6 +560,7 @@
+ 			Logger::Log("Skipped corrupted frames for \"" + path.generic_string() + "\"", Logger::Level::WARNING);
+ 
+ 		return bufferFrameCount;
++#endif
+ 	}
+ 
+ 

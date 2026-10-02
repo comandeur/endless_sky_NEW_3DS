@@ -1,0 +1,41 @@
+--- a/source/image/SpriteLoadManager.cpp
++++ b/source/image/SpriteLoadManager.cpp
+@@ -173,6 +173,12 @@
+ 
+ void SpriteLoadManager::FindDeferredFolders()
+ {
++#ifdef __3DS__
++	// The 3DS streams every sprite from the texture pack when it is drawn
++	// (see ctr/TextureCache.h), so nothing needs to be deferred.
++	deferredFolders.clear();
++	return;
++#endif
+ 	// Landscape images are always deferred.
+ 	if(Preferences::Has("Defer loading images"))
+ 		deferredFolders = {"land", "thumbnail", "outfit", "scene", "star", "planet"};
+--- a/source/GameData.cpp
++++ b/source/GameData.cpp
+@@ -68,6 +68,10 @@
+ #include "test/TestData.h"
+ #include "UniverseObjects.h"
+ 
++#ifdef __3DS__
++#include "ctr/Assets.h"
++#endif
++
+ #include <algorithm>
+ #include <cassert>
+ #include <filesystem>
+@@ -955,6 +959,12 @@
+ 		// this directory prefix.
+ 		filesystem::path directoryPath = source / "images";
+ 
++#ifdef __3DS__
++		// Converted game data comes with an index of its images, which is much
++		// faster to read than the SD card's directory tree.
++		if(Assets::LoadImageIndex(source, images))
++			continue;
++#endif
+ 		vector<filesystem::path> imageFiles = Files::RecursiveList(directoryPath);
+ 		for(auto &path : imageFiles)
+ 			if(ImageSet::IsImage(path))

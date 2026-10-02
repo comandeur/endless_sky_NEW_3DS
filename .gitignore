@@ -1,0 +1,8 @@
+/build/
+/build-*/
+/assets-out/
+*.3dsx
+*.cia
+*.elf
+*.smdh
+__pycache__/
