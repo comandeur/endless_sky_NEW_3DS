@@ -259,7 +259,7 @@ void Font::LoadTexture(ImageBuffer &image)
 	}
 
 	texture = new C3D_Tex{};
-	if(!Gfx::CreateTexture(texture, width, height, GPU_A8, true))
+	if(!Gfx::CreateTexture(texture, width, height, GPU_A8, false))
 	{
 		delete texture;
 		texture = nullptr;

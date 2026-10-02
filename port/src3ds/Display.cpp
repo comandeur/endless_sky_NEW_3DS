@@ -20,6 +20,7 @@ this program. If not, see <https://www.gnu.org/licenses/>.
 #include "TextureCache.h"
 
 #include "../Color.h"
+#include "../Logger.h"
 #include "../Screen.h"
 #include "../text/Font.h"
 #include "../text/FontSet.h"
@@ -37,16 +38,15 @@ namespace {
 	constexpr int BOTTOM_WIDTH = 320;
 	constexpr int SCREEN_HEIGHT = 240;
 
-	// The menu canvas is drawn into this texture at full size.
-	constexpr int CANVAS_TEXTURE_SIZE = 1024;
-	C3D_Tex canvasTexture{};
-	C3D_RenderTarget *canvasTarget = nullptr;
+	// The drawing commands of the menu canvas, replayed on both screens.
+	Gfx::CommandList canvas;
+	bool recordingCanvas = false;
 
 	Display::Mode mode = Display::Mode::MENU;
 
 	// The lens: the part of the menu canvas shown on the bottom screen.
 	const double LENS_SCALES[] = {1., .75, .5};
-	int lensZoom = 0;
+	int lensZoom = 1;
 	// Center of the lens, relative to the top left of the canvas.
 	Point lensCenter(Display::MENU_WIDTH * .5, Display::MENU_HEIGHT * .5);
 
@@ -99,28 +99,6 @@ namespace {
 	}
 
 
-	// Draw a textured rectangle from the canvas texture.
-	void CanvasQuad(float left, float top, float right, float bottom, float u0, float v0, float u1, float v1)
-	{
-		Gfx::Vertex *v = Gfx::Triangles(6, Gfx::Material::TEXTURE, &canvasTexture, nullptr, nullptr,
-			Gfx::MaterialParams(), Gfx::Blend::REPLACE);
-		if(!v)
-			return;
-		Gfx::Vertex tl{}, tr{}, bl{}, br{};
-		for(Gfx::Vertex *c : {&tl, &tr, &bl, &br})
-			Gfx::SetColor(*c, 255, 255, 255, 255);
-		tl.x = bl.x = left;
-		tr.x = br.x = right;
-		tl.y = tr.y = top;
-		bl.y = br.y = bottom;
-		tl.u = bl.u = u0;
-		tr.u = br.u = u1;
-		tl.v = tr.v = v0;
-		bl.v = br.v = v1;
-		Gfx::Quad(v, tl, tr, bl, br);
-	}
-
-
 	void Frame(float left, float top, float right, float bottom, float width, const Color &color)
 	{
 		Gfx::FillRect(left, top, right, top + width, color);
@@ -150,18 +128,14 @@ namespace {
 
 bool Display::Init()
 {
-	if(!Gfx::Init())
-		return false;
-	canvasTarget = Gfx::CreateRenderTexture(&canvasTexture, CANVAS_TEXTURE_SIZE, CANVAS_TEXTURE_SIZE);
-	return canvasTarget;
+	return Gfx::Init();
 }
 
 
 
 void Display::Quit()
 {
-	Gfx::DeleteRenderTexture(canvasTarget, &canvasTexture);
-	canvasTarget = nullptr;
+	canvas.Clear();
 	Gfx::Quit();
 }
 
@@ -282,35 +256,35 @@ void Display::SetPressedFlightButton(int keycode)
 
 void Display::BeginCanvas()
 {
-	if(!canvasTarget)
-		return;
-	Gfx::SetTextureTarget(canvasTarget, CANVAS_TEXTURE_SIZE, CANVAS_TEXTURE_SIZE);
-	// The canvas fills the top left of the texture, at one texel per unit.
-	float left = -MENU_WIDTH * .5f;
-	float top = -MENU_HEIGHT * .5f;
-	Gfx::SetView(left, top, left + CANVAS_TEXTURE_SIZE, top + CANVAS_TEXTURE_SIZE);
+	Gfx::BeginRecording(canvas, -MENU_WIDTH * .5f, -MENU_HEIGHT * .5f, MENU_WIDTH * .5f, MENU_HEIGHT * .5f);
+	recordingCanvas = true;
+	// The canvas starts out black.
+	Gfx::Clear();
 }
 
 
 
 void Display::PresentCanvas()
 {
-	if(!canvasTarget)
+	if(!recordingCanvas)
 		return;
-	const float u1 = static_cast<float>(MENU_WIDTH) / CANVAS_TEXTURE_SIZE;
-	const float v1 = 1.f - static_cast<float>(MENU_HEIGHT) / CANVAS_TEXTURE_SIZE;
+	Gfx::EndRecording();
+	recordingCanvas = false;
+
 	ClampLens();
 	Point lensSize = LensSize();
 	Point lensTopLeft = lensCenter - lensSize * .5;
 
 	// Top screen: the whole canvas, keeping its aspect ratio.
-	Gfx::SetTarget(Gfx::Target::TOP);
-	Gfx::SetView(0.f, 0.f, TOP_WIDTH, SCREEN_HEIGHT);
 	const float scale = static_cast<float>(SCREEN_HEIGHT) / MENU_HEIGHT;
-	const float width = MENU_WIDTH * scale;
-	const float x0 = .5f * (TOP_WIDTH - width);
-	CanvasQuad(x0, 0.f, x0 + width, SCREEN_HEIGHT, 0.f, 1.f, u1, v1);
+	const float halfWidth = .5f * TOP_WIDTH / scale;
+	Gfx::SetTarget(Gfx::Target::TOP);
+	Gfx::SetView(-halfWidth, -MENU_HEIGHT * .5f, halfWidth, MENU_HEIGHT * .5f);
+	Gfx::Replay(canvas);
+
 	// Show where the lens is, and where the stylus last touched.
+	Gfx::SetView(0.f, 0.f, TOP_WIDTH, SCREEN_HEIGHT);
+	const float x0 = .5f * TOP_WIDTH - MENU_WIDTH * .5f * scale;
 	Frame(x0 + lensTopLeft.X() * scale, lensTopLeft.Y() * scale,
 		x0 + (lensTopLeft.X() + lensSize.X()) * scale, (lensTopLeft.Y() + lensSize.Y()) * scale,
 		1.f, Color(.8f, .7f, .2f, .9f));
@@ -320,11 +294,10 @@ void Display::PresentCanvas()
 
 	// Bottom screen: the lens.
 	Gfx::SetTarget(Gfx::Target::BOTTOM);
-	Gfx::SetView(0.f, 0.f, BOTTOM_WIDTH, SCREEN_HEIGHT);
-	const float s = 1.f / CANVAS_TEXTURE_SIZE;
-	CanvasQuad(0.f, 0.f, BOTTOM_WIDTH, SCREEN_HEIGHT,
-		lensTopLeft.X() * s, 1.f - lensTopLeft.Y() * s,
-		(lensTopLeft.X() + lensSize.X()) * s, 1.f - (lensTopLeft.Y() + lensSize.Y()) * s);
+	float left = lensTopLeft.X() - MENU_WIDTH * .5f;
+	float top = lensTopLeft.Y() - MENU_HEIGHT * .5f;
+	Gfx::SetView(left, top, left + lensSize.X(), top + lensSize.Y());
+	Gfx::Replay(canvas);
 }
 
 

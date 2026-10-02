@@ -29,7 +29,22 @@ this program. If not, see <https://www.gnu.org/licenses/>.
 
 using namespace std;
 
+namespace Gfx {
+	// Access to the private parts of CommandList.
+	struct GfxInternal {
+		using Batch = CommandList::Batch;
+		static vector<Vertex> &Vertices(CommandList &list) { return list.vertices; }
+		static const vector<Vertex> &Vertices(const CommandList &list) { return list.vertices; }
+		static vector<Batch> &Batches(CommandList &list) { return list.batches; }
+		static const vector<Batch> &Batches(const CommandList &list) { return list.batches; }
+		static float *Area(CommandList &list) { return list.area; }
+	};
+}
+
 namespace {
+	using Gfx::GfxInternal;
+	using Batch = GfxInternal::Batch;
+
 	// Physical sizes of the two screens.
 	constexpr int TOP_WIDTH = 400;
 	constexpr int BOTTOM_WIDTH = 320;
@@ -43,7 +58,7 @@ namespace {
 	constexpr size_t COMMAND_BUFFER_SIZE = 0x200000;
 	// Vertex arenas: one per frame in flight.
 	constexpr int ARENA_COUNT = 2;
-	constexpr int ARENA_VERTICES = 48 * 1024;
+	constexpr int ARENA_VERTICES = 96 * 1024;
 
 	DVLB_s *shaderDvlb = nullptr;
 	shaderProgram_s program;
@@ -58,10 +73,6 @@ namespace {
 
 	bool inFrame = false;
 	Gfx::Target currentTarget = Gfx::Target::TOP;
-	int targetWidth = TOP_WIDTH;
-	int targetHeight = SCREEN_HEIGHT;
-	bool targetIsTexture = false;
-	C3D_RenderTarget *textureTarget = nullptr;
 
 	struct ViewRect {
 		float left = -200.f;
@@ -69,31 +80,24 @@ namespace {
 		float right = 200.f;
 		float bottom = 120.f;
 	};
-	ViewRect views[3];
+	ViewRect views[2];
 
-	// State of the pending batch of triangles.
-	struct BatchKey {
-		Gfx::Material material = Gfx::Material::SOLID;
-		Gfx::Blend blend = Gfx::Blend::PREMULTIPLIED;
-		C3D_Tex *tex[3] = {nullptr, nullptr, nullptr};
-		float fade = 0.f;
-		const float *swizzle = nullptr;
-		bool useMask = false;
+	// Recordings in progress (the innermost one is at the back).
+	vector<Gfx::CommandList *> recordings;
 
-		bool operator==(const BatchKey &other) const
-		{
-			return material == other.material && blend == other.blend && tex[0] == other.tex[0]
-				&& tex[1] == other.tex[1] && tex[2] == other.tex[2] && fade == other.fade
-				&& swizzle == other.swizzle && useMask == other.useMask;
-		}
-	};
-	BatchKey pending;
+	// The pending batch of triangles: either in the arena, or in the vertices
+	// of the current recording.
+	Gfx::DrawState pending;
 	int pendingFirst = 0;
 	int pendingCount = 0;
 
 	// The state that was last sent to citro3d.
-	BatchKey applied;
+	Gfx::DrawState applied;
 	bool appliedValid = false;
+	// The translation and clip currently applied.
+	float appliedDx = 0.f;
+	float appliedDy = 0.f;
+	bool scissorEnabled = false;
 
 	int drawCalls = 0;
 	int lastDrawCalls = 0;
@@ -122,7 +126,7 @@ namespace {
 
 
 	// Configure the texture combiners and blending for the given batch.
-	void ApplyState(const BatchKey &key)
+	void ApplyState(const Gfx::DrawState &key)
 	{
 		if(appliedValid && applied == key)
 			return;
@@ -238,15 +242,48 @@ namespace {
 	}
 
 
-	void ApplyProjection()
+	int TargetPixelWidth()
+	{
+		return currentTarget == Gfx::Target::TOP ? TOP_WIDTH : BOTTOM_WIDTH;
+	}
+
+
+	// Map canvas coordinates (moved by dx, dy) to the current screen.
+	void ApplyProjection(float dx = 0.f, float dy = 0.f)
 	{
 		const ViewRect &view = views[static_cast<int>(currentTarget)];
 		C3D_Mtx projection;
-		if(targetIsTexture)
-			Mtx_Ortho(&projection, view.left, view.right, view.bottom, view.top, -1.f, 1.f, true);
-		else
-			Mtx_OrthoTilt(&projection, view.left, view.right, view.bottom, view.top, -1.f, 1.f, true);
+		Mtx_OrthoTilt(&projection, view.left - dx, view.right - dx, view.bottom - dy, view.top - dy, -1.f, 1.f, true);
 		C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, projectionLocation, &projection);
+		appliedDx = dx;
+		appliedDy = dy;
+	}
+
+
+	// Restrict drawing to a rectangle of canvas coordinates, or remove the
+	// restriction if clip is null.
+	void ApplyScissor(const float *clip)
+	{
+		if(!clip)
+		{
+			if(scissorEnabled)
+				C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+			scissorEnabled = false;
+			return;
+		}
+		const ViewRect &view = views[static_cast<int>(currentTarget)];
+		const int width = TargetPixelWidth();
+		float scaleX = width / (view.right - view.left);
+		float scaleY = SCREEN_HEIGHT / (view.bottom - view.top);
+		// Screen pixels, with the origin at the top left.
+		int x0 = clamp(static_cast<int>(floor((clip[0] - view.left) * scaleX)), 0, width);
+		int x1 = clamp(static_cast<int>(ceil((clip[2] - view.left) * scaleX)), 0, width);
+		int y0 = clamp(static_cast<int>(floor((clip[1] - view.top) * scaleY)), 0, SCREEN_HEIGHT);
+		int y1 = clamp(static_cast<int>(ceil((clip[3] - view.top) * scaleY)), 0, SCREEN_HEIGHT);
+		// The framebuffers are rotated: their x axis goes from the bottom of
+		// the screen to the top, and their y axis from the right to the left.
+		C3D_SetScissor(GPU_SCISSOR_NORMAL, SCREEN_HEIGHT - y1, width - x1, SCREEN_HEIGHT - y0, width - x0);
+		scissorEnabled = true;
 	}
 
 
@@ -268,6 +305,75 @@ namespace {
 	}
 
 
+	// Reserve room in the arena of this frame.
+	Gfx::Vertex *ArenaAlloc(int count)
+	{
+		if(!inFrame || arenaUsed + count > ARENA_VERTICES)
+		{
+			if(inFrame && !warnedFull)
+			{
+				Logger::Log("Gfx: vertex arena is full; some primitives were dropped.", Logger::Level::WARNING);
+				warnedFull = true;
+			}
+			return nullptr;
+		}
+		Gfx::Vertex *result = arenas[arenaIndex] + arenaUsed;
+		arenaUsed += count;
+		return result;
+	}
+
+
+	void Draw(const Gfx::DrawState &state, int first, int count, float dx, float dy)
+	{
+		ApplyState(state);
+		if(dx != appliedDx || dy != appliedDy)
+			ApplyProjection(dx, dy);
+		C3D_DrawArrays(GPU_TRIANGLES, first, count);
+		++drawCalls;
+	}
+
+
+	// Replay a list on the current target. Its vertices are copied to the arena.
+	void ReplayList(const Gfx::CommandList &list, float dx, float dy, const float *clip)
+	{
+		const vector<Gfx::Vertex> &vertices = GfxInternal::Vertices(list);
+		Gfx::Vertex *copy = nullptr;
+		int base = 0;
+		if(!vertices.empty())
+		{
+			copy = ArenaAlloc(vertices.size());
+			if(!copy)
+				return;
+			memcpy(copy, vertices.data(), vertices.size() * sizeof(Gfx::Vertex));
+			base = copy - arenas[arenaIndex];
+		}
+		for(const Batch &batch : GfxInternal::Batches(list))
+		{
+			if(batch.call)
+			{
+				// Intersect the clip rectangles.
+				float inner[4] = {batch.clip[0] + dx, batch.clip[1] + dy, batch.clip[2] + dx, batch.clip[3] + dy};
+				if(clip)
+				{
+					inner[0] = max(inner[0], clip[0]);
+					inner[1] = max(inner[1], clip[1]);
+					inner[2] = min(inner[2], clip[2]);
+					inner[3] = min(inner[3], clip[3]);
+				}
+				if(inner[2] <= inner[0] || inner[3] <= inner[1])
+					continue;
+				ReplayList(*batch.call, dx + batch.dx, dy + batch.dy, inner);
+				ApplyScissor(clip);
+			}
+			else
+			{
+				ApplyScissor(clip);
+				Draw(batch.state, base + batch.first, batch.count, dx, dy);
+			}
+		}
+	}
+
+
 	// Morton order of a pixel within an 8x8 tile.
 	inline u32 Morton(u32 x, u32 y)
 	{
@@ -284,12 +390,39 @@ namespace {
 
 
 
+bool Gfx::DrawState::operator==(const DrawState &other) const
+{
+	return material == other.material && blend == other.blend && tex[0] == other.tex[0]
+		&& tex[1] == other.tex[1] && tex[2] == other.tex[2] && fade == other.fade
+		&& swizzle == other.swizzle && useMask == other.useMask;
+}
+
+
+
+void Gfx::CommandList::Clear()
+{
+	vertices.clear();
+	batches.clear();
+}
+
+
+
+bool Gfx::CommandList::Empty() const
+{
+	return batches.empty();
+}
+
+
+
 bool Gfx::Init()
 {
 	gfxInitDefault();
 	gfxSet3D(false);
 	if(!C3D_Init(COMMAND_BUFFER_SIZE))
+	{
+		Logger::Log("Gfx: C3D_Init failed.", Logger::Level::ERROR);
 		return false;
+	}
 
 	screens[0] = C3D_RenderTargetCreate(SCREEN_HEIGHT, TOP_WIDTH, GPU_RB_RGBA8, C3D_DEPTHTYPE(-1));
 	C3D_RenderTargetSetOutput(screens[0], GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
@@ -308,7 +441,10 @@ bool Gfx::Init()
 	{
 		arena = static_cast<Vertex *>(LinearAlloc(ARENA_VERTICES * sizeof(Vertex)));
 		if(!arena)
+		{
+			Logger::Log("Gfx: unable to allocate the vertex arenas.", Logger::Level::ERROR);
 			return false;
+		}
 	}
 
 	C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
@@ -355,7 +491,9 @@ void Gfx::BeginFrame()
 	arenaUsed = 0;
 	pendingCount = 0;
 	appliedValid = false;
+	scissorEnabled = true;
 	drawCalls = 0;
+	recordings.clear();
 
 	// citro3d forgets the bound program, attributes and buffers between frames.
 	C3D_BindProgram(&program);
@@ -376,6 +514,7 @@ void Gfx::EndFrame()
 {
 	if(!inFrame)
 		return;
+	recordings.clear();
 	Flush();
 	C3D_FrameEnd(0);
 	inFrame = false;
@@ -394,17 +533,13 @@ bool Gfx::InFrame()
 
 void Gfx::SetTarget(Target target)
 {
-	if(target == Target::TEXTURE)
-		return;
 	Flush();
 	currentTarget = target;
-	targetIsTexture = false;
-	targetWidth = (target == Target::TOP ? TOP_WIDTH : BOTTOM_WIDTH);
-	targetHeight = SCREEN_HEIGHT;
 	if(inFrame)
 	{
 		C3D_FrameDrawOn(screens[static_cast<int>(target)]);
 		ApplyProjection();
+		ApplyScissor(nullptr);
 	}
 }
 
@@ -417,72 +552,16 @@ Gfx::Target Gfx::CurrentTarget()
 
 
 
-void Gfx::SetTextureTarget(C3D_RenderTarget *target, int width, int height)
-{
-	Flush();
-	currentTarget = Target::TEXTURE;
-	targetIsTexture = true;
-	textureTarget = target;
-	targetWidth = width;
-	targetHeight = height;
-	views[2] = {-width * .5f, -height * .5f, width * .5f, height * .5f};
-	if(inFrame)
-	{
-		C3D_RenderTargetClear(target, C3D_CLEAR_ALL, 0, 0);
-		C3D_FrameDrawOn(target);
-		ApplyProjection();
-	}
-}
-
-
-
-Gfx::TargetState Gfx::SaveTarget()
-{
-	TargetState state;
-	state.target = currentTarget;
-	state.renderTarget = (currentTarget == Target::TEXTURE ? textureTarget : nullptr);
-	state.width = targetWidth;
-	state.height = targetHeight;
-	const ViewRect &view = views[static_cast<int>(currentTarget)];
-	state.view[0] = view.left;
-	state.view[1] = view.top;
-	state.view[2] = view.right;
-	state.view[3] = view.bottom;
-	return state;
-}
-
-
-
-void Gfx::RestoreTarget(const TargetState &state)
-{
-	Flush();
-	if(state.target == Target::TEXTURE && state.renderTarget)
-	{
-		currentTarget = Target::TEXTURE;
-		targetIsTexture = true;
-		textureTarget = state.renderTarget;
-		targetWidth = state.width;
-		targetHeight = state.height;
-		if(inFrame)
-			C3D_FrameDrawOn(state.renderTarget);
-	}
-	else
-		SetTarget(state.target);
-	SetView(state.view[0], state.view[1], state.view[2], state.view[3]);
-}
-
-
-
 int Gfx::TargetWidth()
 {
-	return targetWidth;
+	return TargetPixelWidth();
 }
 
 
 
 int Gfx::TargetHeight()
 {
-	return targetHeight;
+	return SCREEN_HEIGHT;
 }
 
 
@@ -492,13 +571,25 @@ void Gfx::SetView(float left, float top, float right, float bottom)
 	Flush();
 	views[static_cast<int>(currentTarget)] = {left, top, right, bottom};
 	if(inFrame)
+	{
 		ApplyProjection();
+		ApplyScissor(nullptr);
+	}
 }
 
 
 
 void Gfx::GetView(float &left, float &top, float &right, float &bottom)
 {
+	if(!recordings.empty())
+	{
+		const float *area = GfxInternal::Area(*recordings.back());
+		left = area[0];
+		top = area[1];
+		right = area[2];
+		bottom = area[3];
+		return;
+	}
 	const ViewRect &view = views[static_cast<int>(currentTarget)];
 	left = view.left;
 	top = view.top;
@@ -508,27 +599,80 @@ void Gfx::GetView(float &left, float &top, float &right, float &bottom)
 
 
 
-float Gfx::ViewScale()
+void Gfx::BeginRecording(CommandList &list, float left, float top, float right, float bottom)
 {
-	const ViewRect &view = views[static_cast<int>(currentTarget)];
-	return targetWidth / max(1.f, view.right - view.left);
+	Flush();
+	list.Clear();
+	float *area = GfxInternal::Area(list);
+	area[0] = left;
+	area[1] = top;
+	area[2] = right;
+	area[3] = bottom;
+	recordings.push_back(&list);
+}
+
+
+
+void Gfx::EndRecording()
+{
+	Flush();
+	if(!recordings.empty())
+		recordings.pop_back();
+}
+
+
+
+bool Gfx::IsRecording()
+{
+	return !recordings.empty();
+}
+
+
+
+void Gfx::Replay(const CommandList &list, float dx, float dy, const float *clip)
+{
+	Flush();
+	if(!recordings.empty())
+	{
+		// Nested recording: remember the call.
+		Batch batch;
+		batch.call = &list;
+		batch.dx = dx;
+		batch.dy = dy;
+		if(clip)
+			copy(clip, clip + 4, batch.clip);
+		else
+		{
+			batch.clip[0] = batch.clip[1] = -1e9f;
+			batch.clip[2] = batch.clip[3] = 1e9f;
+		}
+		GfxInternal::Batches(*recordings.back()).push_back(batch);
+		return;
+	}
+	if(!inFrame)
+		return;
+	ReplayList(list, dx, dy, clip);
+	ApplyScissor(nullptr);
+	if(appliedDx || appliedDy)
+		ApplyProjection();
 }
 
 
 
 void Gfx::Clear(float r, float g, float b, float a)
 {
-	const ViewRect &view = views[static_cast<int>(currentTarget)];
+	float left, top, right, bottom;
+	GetView(left, top, right, bottom);
 	Vertex *v = Triangles(6, Material::SOLID, nullptr, nullptr, nullptr, MaterialParams(), Blend::REPLACE);
 	if(!v)
 		return;
 	Vertex corner{};
-	SetColor(corner, ToByte(r), ToByte(g), ToByte(b), ToByte(a));
+	SetColor(corner, Color(r, g, b, a));
 	Vertex tl = corner, tr = corner, bl = corner, br = corner;
-	tl.x = bl.x = view.left;
-	tr.x = br.x = view.right;
-	tl.y = tr.y = view.top;
-	bl.y = br.y = view.bottom;
+	tl.x = bl.x = left;
+	tr.x = br.x = right;
+	tl.y = tr.y = top;
+	bl.y = br.y = bottom;
 	Quad(v, tl, tr, bl, br);
 }
 
@@ -537,19 +681,10 @@ void Gfx::Clear(float r, float g, float b, float a)
 Gfx::Vertex *Gfx::Triangles(int vertexCount, Material material, C3D_Tex *tex0, C3D_Tex *tex1,
 	C3D_Tex *tex2, const MaterialParams &params, Blend blend)
 {
-	if(!inFrame || vertexCount <= 0)
+	if(vertexCount <= 0 || (!inFrame && recordings.empty()))
 		return nullptr;
-	if(arenaUsed + vertexCount > ARENA_VERTICES)
-	{
-		if(!warnedFull)
-		{
-			Logger::Log("Gfx: vertex arena is full; some primitives were dropped.", Logger::Level::WARNING);
-			warnedFull = true;
-		}
-		return nullptr;
-	}
 
-	BatchKey key;
+	DrawState key;
 	key.material = material;
 	key.blend = blend;
 	key.tex[0] = tex0;
@@ -567,10 +702,26 @@ Gfx::Vertex *Gfx::Triangles(int vertexCount, Material material, C3D_Tex *tex0, C
 	{
 		Flush();
 		pending = key;
-		pendingFirst = arenaUsed;
+		pendingFirst = recordings.empty() ? arenaUsed : GfxInternal::Vertices(*recordings.back()).size();
 	}
-	Vertex *result = arenas[arenaIndex] + arenaUsed;
-	arenaUsed += vertexCount;
+
+	Vertex *result;
+	if(recordings.empty())
+	{
+		result = ArenaAlloc(vertexCount);
+		if(!result)
+		{
+			// Draw what is pending, so that this does not break the batch.
+			return nullptr;
+		}
+	}
+	else
+	{
+		vector<Vertex> &vertices = GfxInternal::Vertices(*recordings.back());
+		size_t start = vertices.size();
+		vertices.resize(start + vertexCount);
+		result = vertices.data() + start;
+	}
 	pendingCount += vertexCount;
 	return result;
 }
@@ -581,19 +732,20 @@ void Gfx::Flush()
 {
 	if(!pendingCount)
 		return;
-	ApplyState(pending);
-	C3D_DrawArrays(GPU_TRIANGLES, pendingFirst, pendingCount);
-	++drawCalls;
+	if(!recordings.empty())
+	{
+		Batch batch;
+		batch.state = pending;
+		batch.first = pendingFirst;
+		batch.count = pendingCount;
+		GfxInternal::Batches(*recordings.back()).push_back(batch);
+	}
+	else
+	{
+		ApplyScissor(nullptr);
+		Draw(pending, pendingFirst, pendingCount, 0.f, 0.f);
+	}
 	pendingCount = 0;
-}
-
-
-
-uint32_t Gfx::PackColor(const Color &color, float alphaScale)
-{
-	const float *c = color.Get();
-	return ToByte(c[0] * alphaScale) | (ToByte(c[1] * alphaScale) << 8) | (ToByte(c[2] * alphaScale) << 16)
-		| (ToByte(c[3] * alphaScale) << 24);
 }
 
 
@@ -706,44 +858,14 @@ void Gfx::DeleteTexture(C3D_Tex *tex)
 	if(!tex || !tex->data)
 		return;
 	// Make sure that no pending draw call still refers to this texture.
-	if(pendingCount && (pending.tex[0] == tex || pending.tex[1] == tex || pending.tex[2] == tex))
+	if(pendingCount && recordings.empty()
+			&& (pending.tex[0] == tex || pending.tex[1] == tex || pending.tex[2] == tex))
 		Flush();
 	if(appliedValid && (applied.tex[0] == tex || applied.tex[1] == tex || applied.tex[2] == tex))
 		appliedValid = false;
 	lock_guard<mutex> lock(linearMutex);
 	C3D_TexDelete(tex);
 	tex->data = nullptr;
-}
-
-
-
-C3D_RenderTarget *Gfx::CreateRenderTexture(C3D_Tex *tex, int width, int height)
-{
-	{
-		// Prefer the (faster) video memory, but fall back to the main memory.
-		lock_guard<mutex> lock(linearMutex);
-		if(!C3D_TexInitVRAM(tex, width, height, GPU_RGBA8) && !C3D_TexInit(tex, width, height, GPU_RGBA8))
-			return nullptr;
-	}
-	C3D_TexSetFilter(tex, GPU_LINEAR, GPU_LINEAR);
-	C3D_TexSetWrap(tex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
-	return C3D_RenderTargetCreateFromTex(tex, GPU_TEXFACE_2D, 0, C3D_DEPTHTYPE(-1));
-}
-
-
-
-void Gfx::DeleteRenderTexture(C3D_RenderTarget *target, C3D_Tex *tex)
-{
-	Flush();
-	if(target)
-		C3D_RenderTargetDelete(target);
-	appliedValid = false;
-	if(tex && tex->data)
-	{
-		lock_guard<mutex> lock(linearMutex);
-		C3D_TexDelete(tex);
-		tex->data = nullptr;
-	}
 }
 
 

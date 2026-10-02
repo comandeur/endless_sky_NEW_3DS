@@ -18,6 +18,7 @@ this program. If not, see <https://www.gnu.org/licenses/>.
 #include <citro3d.h>
 
 #include <cstdint>
+#include <vector>
 
 class Color;
 
@@ -34,9 +35,12 @@ class Color;
 //
 // Coordinates are always "canvas" coordinates, exactly like the desktop game:
 // the origin is at the center of the current canvas and y points down. The
-// canvas region that is visible on the current render target is chosen with
-// SetView(), which is how the same UI can be shown scaled down on one screen
-// and magnified on the other.
+// canvas region that is visible on the current screen is chosen with SetView().
+//
+// Drawing can also be recorded into a CommandList and replayed later, any
+// number of times, on any screen and with any view. This is how the menus are
+// shown both as an overview and magnified, and how the game's render buffers
+// (scrolling lists) are implemented without rendering to textures.
 namespace Gfx {
 	struct Vertex {
 		float x;
@@ -73,7 +77,6 @@ namespace Gfx {
 	enum class Target : uint8_t {
 		TOP,
 		BOTTOM,
-		TEXTURE,
 	};
 
 	// Parameters of the more complex materials.
@@ -84,6 +87,47 @@ namespace Gfx {
 		const float *swizzle = nullptr;
 		// SWIZZLE: whether texture 2 holds a swizzle mask.
 		bool useMask = false;
+	};
+
+	// Everything that determines how a batch of triangles is drawn.
+	struct DrawState {
+		Material material = Material::SOLID;
+		Blend blend = Blend::PREMULTIPLIED;
+		C3D_Tex *tex[3] = {nullptr, nullptr, nullptr};
+		float fade = 0.f;
+		const float *swizzle = nullptr;
+		bool useMask = false;
+
+		bool operator==(const DrawState &other) const;
+	};
+
+	struct GfxInternal;
+
+	// Recorded drawing.
+	class CommandList {
+	public:
+		void Clear();
+		bool Empty() const;
+
+	private:
+		struct Batch {
+			DrawState state;
+			int first = 0;
+			int count = 0;
+			// Instead of triangles, a batch can replay another list, moved by
+			// (dx, dy) and clipped to a rectangle (left, top, right, bottom).
+			const CommandList *call = nullptr;
+			float dx = 0.f;
+			float dy = 0.f;
+			float clip[4] = {};
+		};
+
+		std::vector<Vertex> vertices;
+		std::vector<Batch> batches;
+		// The logical area of the recording, for Clear().
+		float area[4] = {};
+
+		friend struct GfxInternal;
 	};
 
 
@@ -98,20 +142,6 @@ namespace Gfx {
 	// Select the physical screen to draw on. The previous view is kept per screen.
 	void SetTarget(Target target);
 	Target CurrentTarget();
-	// Draw into a texture. The texture must have been created with
-	// CreateRenderTexture(). Use SetTarget() to return to a screen.
-	void SetTextureTarget(C3D_RenderTarget *target, int width, int height);
-	// Remember the current target (and its view) to restore it later; used to
-	// draw into a texture in the middle of drawing something else.
-	struct TargetState {
-		Target target = Target::TOP;
-		C3D_RenderTarget *renderTarget = nullptr;
-		int width = 0;
-		int height = 0;
-		float view[4] = {};
-	};
-	TargetState SaveTarget();
-	void RestoreTarget(const TargetState &state);
 	// Physical size of the current target, in pixels.
 	int TargetWidth();
 	int TargetHeight();
@@ -119,21 +149,29 @@ namespace Gfx {
 	// Choose which part of the canvas is visible on the current target.
 	void SetView(float left, float top, float right, float bottom);
 	void GetView(float &left, float &top, float &right, float &bottom);
-	// Physical pixels per canvas unit on the current target.
-	float ViewScale();
 
-	// Fill the visible part of the current target with a color.
+	// Record the drawing commands into a list instead of drawing them. The
+	// area is the region of canvas coordinates that the recording represents.
+	// Recordings can be nested.
+	void BeginRecording(CommandList &list, float left, float top, float right, float bottom);
+	void EndRecording();
+	bool IsRecording();
+	// Draw a recorded list on the current target (or into the current
+	// recording), moved by (dx, dy) and clipped to the given rectangle.
+	void Replay(const CommandList &list, float dx = 0.f, float dy = 0.f, const float *clip = nullptr);
+
+	// Fill the visible area (or the recording's area) with a color.
 	void Clear(float r = 0.f, float g = 0.f, float b = 0.f, float a = 1.f);
 
 	// Primitive submission. Returns room for the requested number of vertices
-	// (forming independent triangles), or nullptr if the vertex arena is full.
+	// (forming independent triangles), or nullptr if there is no room left.
+	// The vertices must be written before the next call to any Gfx function.
 	Vertex *Triangles(int vertexCount, Material material, C3D_Tex *tex0 = nullptr, C3D_Tex *tex1 = nullptr,
 		C3D_Tex *tex2 = nullptr, const MaterialParams &params = MaterialParams(), Blend blend = Blend::PREMULTIPLIED);
 	// Submit any pending primitives.
 	void Flush();
 
 	// Helpers.
-	uint32_t PackColor(const Color &color, float alphaScale = 1.f);
 	void SetColor(Vertex &v, const Color &color, float alphaScale = 1.f);
 	void SetColor(Vertex &v, uint8_t r, uint8_t g, uint8_t b, uint8_t a);
 	// Write a quad (two triangles) into six vertices. Corners are given in
@@ -150,16 +188,11 @@ namespace Gfx {
 	size_t LinearFreeSpace();
 	bool CreateTexture(C3D_Tex *tex, int width, int height, GPU_TEXCOLOR format, bool mipmap = false);
 	void DeleteTexture(C3D_Tex *tex);
-	// A texture that can also be drawn into.
-	C3D_RenderTarget *CreateRenderTexture(C3D_Tex *tex, int width, int height);
-	void DeleteRenderTexture(C3D_RenderTarget *target, C3D_Tex *tex);
 
 	// Upload 32-bit pixels in the layout of the game's ImageBuffer (0xAARRGGBB,
 	// row 0 at the top, rows of `stride` pixels) into a texture, converting to
-	// the texture's format and tiling it.
-	// Supported formats: RGBA8, RGBA4, A8, L8. Rows are flipped as needed so
-	// that v = 0 is the top of the image.
-	void UploadPixels(C3D_Tex *tex, const uint32_t *rgba, int width, int height, int stride);
+	// the texture's format and tiling it. Supported formats: RGBA8, RGBA4, A8, L8.
+	void UploadPixels(C3D_Tex *tex, const uint32_t *pixels, int width, int height, int stride);
 	// Same for an 8-bit single channel image into an A8 or L8 texture.
 	void UploadAlpha(C3D_Tex *tex, const uint8_t *alpha, int width, int height, int stride);
 

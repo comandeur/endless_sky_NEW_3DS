@@ -1,6 +1,108 @@
 --- a/source/Files.cpp
 +++ b/source/Files.cpp
-@@ -126,8 +126,10 @@
+@@ -21,6 +21,9 @@
+ #include "SDL.h"
+ 
+ #include <algorithm>
++#ifdef __3DS__
++#include <dirent.h>
++#endif
+ #include <fstream>
+ #include <iostream>
+ #include <map>
+@@ -45,6 +48,75 @@
+ 
+ 	shared_ptr<iostream> errorLog;
+ 
++#ifdef __3DS__
++	// The SD card reports some errors (e.g. for missing files) with codes
++	// that std::filesystem does not expect, which makes the throwing versions
++	// of these functions fail, and stat() is not reliable for directories on
++	// every system (or emulator). Directories are recognized by opening them.
++	bool IsDirectory(const filesystem::path &path)
++	{
++		DIR *dir = opendir(path.string().c_str());
++		if(!dir)
++			return false;
++		closedir(dir);
++		return true;
++	}
++
++	bool PathExists(const filesystem::path &path)
++	{
++		error_code error;
++		return filesystem::exists(path, error) || IsDirectory(path);
++	}
++
++	bool IsRegularFile(const filesystem::path &path)
++	{
++		error_code error;
++		return filesystem::is_regular_file(path, error) && !IsDirectory(path);
++	}
++
++	// List the files (or the directories) in a directory, with readdir().
++	void ListDirectory(const filesystem::path &directory, bool directories, bool recursive,
++		vector<filesystem::path> &list)
++	{
++		DIR *dir = opendir(directory.string().c_str());
++		if(!dir)
++			return;
++		vector<filesystem::path> subdirectories;
++		while(dirent *entry = readdir(dir))
++		{
++			string name = entry->d_name;
++			if(name == "." || name == "..")
++				continue;
++			filesystem::path path = directory / name;
++			bool isDirectory = (entry->d_type == DT_DIR)
++				|| (entry->d_type == DT_UNKNOWN && IsDirectory(path));
++			if(isDirectory)
++				subdirectories.push_back(path);
++			if(isDirectory == directories)
++				list.push_back(path);
++		}
++		closedir(dir);
++		if(recursive)
++			for(const filesystem::path &path : subdirectories)
++				ListDirectory(path, directories, true, list);
++	}
++#else
++	bool PathExists(const filesystem::path &path)
++	{
++		return exists(path);
++	}
++
++	bool IsDirectory(const filesystem::path &path)
++	{
++		return is_directory(path);
++	}
++
++	bool IsRegularFile(const filesystem::path &path)
++	{
++		return is_regular_file(path);
++	}
++#endif
++
+ 	// Open the given folder in a separate window.
+ 	void OpenFolder(const filesystem::path &path)
+ 	{
+@@ -76,13 +148,13 @@
+ 
+ 		/// If not, open the zip file.
+ 		filesystem::path zipPath = filePath;
+-		while(!exists(zipPath))
++		while(!PathExists(zipPath))
+ 		{
+ 			if(!zipPath.has_parent_path() || zipPath.parent_path() == zipPath)
+ 				return {};
+ 			zipPath = zipPath.parent_path();
+ 		}
+-		if(zipPath.extension() == ".zip" && is_regular_file(zipPath))
++		if(zipPath.extension() == ".zip" && IsRegularFile(zipPath))
+ 		{
+ 			/// Limit the number of open zip files to one per thread to avoid having too many files open.
+ 			OPEN_ZIP_FILES.clear();
+@@ -126,8 +198,10 @@
  		SDL_free(basePath);
  #endif
  
@@ -11,7 +113,7 @@
  
  #if defined __linux__ || defined __FreeBSD__ || defined __DragonFly__
  		// Special case, for Linux: the resource files are not in the same place as
-@@ -171,7 +173,9 @@
+@@ -171,7 +245,9 @@
  	if(!Exists(config))
  		throw runtime_error("Unable to create config directory!");
  
@@ -21,3 +123,108 @@
  
  	savePath = config / "saves";
  	CreateFolder(savePath);
+@@ -270,7 +346,7 @@
+ {
+ 	vector<filesystem::path> list;
+ 
+-	if(!Exists(directory) || !is_directory(directory))
++	if(!Exists(directory) || !IsDirectory(directory))
+ 	{
+ 		// Check if the requested file is in a known zip.
+ 		shared_ptr<ZipFile> zip = GetZipFile(directory);
+@@ -283,9 +359,13 @@
+ 	}
+ 
+ 
++#ifdef __3DS__
++	ListDirectory(directory, false, false, list);
++#else
+ 	for(const auto &entry : filesystem::directory_iterator(directory))
+ 		if(entry.is_regular_file())
+ 			list.emplace_back(entry);
++#endif
+ 
+ 	sort(list.begin(), list.end());
+ 
+@@ -299,7 +379,7 @@
+ {
+ 	vector<filesystem::path> list;
+ 
+-	if(!Exists(directory) || !is_directory(directory))
++	if(!Exists(directory) || !IsDirectory(directory))
+ 	{
+ 		// Check if the requested file is in a known zip.
+ 		shared_ptr<ZipFile> zip = GetZipFile(directory);
+@@ -311,9 +391,13 @@
+ 		return list;
+ 	}
+ 
++#ifdef __3DS__
++	ListDirectory(directory, true, false, list);
++#else
+ 	for(const auto &entry : filesystem::directory_iterator(directory))
+ 		if(entry.is_directory())
+ 			list.emplace_back(entry);
++#endif
+ 
+ 	sort(list.begin(), list.end());
+ 	return list;
+@@ -324,7 +408,7 @@
+ vector<filesystem::path> Files::RecursiveList(const filesystem::path &directory)
+ {
+ 	vector<filesystem::path> list;
+-	if(!Exists(directory) || !is_directory(directory))
++	if(!Exists(directory) || !IsDirectory(directory))
+ 	{
+ 		// Check if the requested file is in a known zip.
+ 		shared_ptr<ZipFile> zip = GetZipFile(directory);
+@@ -336,9 +420,13 @@
+ 		return list;
+ 	}
+ 
++#ifdef __3DS__
++	ListDirectory(directory, false, true, list);
++#else
+ 	for(const auto &entry : filesystem::recursive_directory_iterator(directory))
+ 		if(entry.is_regular_file())
+ 			list.emplace_back(entry);
++#endif
+ 
+ 	sort(list.begin(), list.end());
+ 	return list;
+@@ -348,7 +436,7 @@
+ 
+ bool Files::Exists(const filesystem::path &filePath)
+ {
+-	if(exists(filePath))
++	if(PathExists(filePath))
+ 		return true;
+ 
+ 	shared_ptr<ZipFile> zip = GetZipFile(filePath);
+@@ -460,7 +548,7 @@
+ 
+ shared_ptr<iostream> Files::Open(const filesystem::path &path, bool write)
+ {
+-	if(!exists(path) && !write)
++	if(!PathExists(path) && !write)
+ 	{
+ 		// Writing to a zip is not supported.
+ 		shared_ptr<ZipFile> zip = GetZipFile(path);
+@@ -518,10 +606,17 @@
+ 	if(Exists(path))
+ 		return;
+ 
++#ifdef __3DS__
++	error_code error;
++	bool created = filesystem::create_directory(path, error);
++	if(!created && !IsDirectory(path))
++		throw runtime_error("Error creating directory!");
++#else
+ 	if(filesystem::create_directory(path))
+ 		filesystem::permissions(path, filesystem::perms(filesystem::perms::owner_all));
+ 	else
+ 		throw runtime_error("Error creating directory!");
++#endif
+ }
+ 
+ 

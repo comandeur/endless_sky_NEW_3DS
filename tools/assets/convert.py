@@ -31,7 +31,9 @@ compiler (for masktool). tools/convert-assets.sh runs all of this in Docker.
 """
 
 import argparse
+import hashlib
 import io
+import pickle
 import math
 import os
 import shutil
@@ -263,8 +265,40 @@ def tex3ds_encode(tex3ds, image, fmt, quality, workdir, index):
 		return file.read()
 
 
+# Bump this when the conversion changes, to invalidate the cache.
+CACHE_VERSION = 1
+
+
+def cache_key(job):
+	name, frame_paths, mask_paths, blends = job[:4]
+	digest = hashlib.sha1()
+	digest.update(repr((CACHE_VERSION, name, blends, SCALES.get(name.split('/')[0], DEFAULT_SCALE))).encode())
+	for path in frame_paths + mask_paths:
+		stat = os.stat(path)
+		digest.update(repr((path, stat.st_size, stat.st_mtime_ns)).encode())
+	return digest.hexdigest()
+
+
 def convert_sprite(job):
-	name, frame_paths, mask_paths, blends, tex3ds, masktool = job
+	"""Convert a sprite, or reuse the result of a previous conversion."""
+	cache_dir = job[6]
+	path = os.path.join(cache_dir, cache_key(job) + '.pkl') if cache_dir else None
+	if path and os.path.exists(path):
+		try:
+			with open(path, 'rb') as file:
+				return pickle.load(file)
+		except Exception:
+			pass
+	record = convert_sprite_uncached(job)
+	if path:
+		with open(path + '.tmp', 'wb') as file:
+			pickle.dump(record, file)
+		os.replace(path + '.tmp', path)
+	return record
+
+
+def convert_sprite_uncached(job):
+	name, frame_paths, mask_paths, blends, tex3ds, masktool = job[:6]
 	folder = name.split('/')[0]
 	frames = [load_premultiplied(path, blend) for path, blend in zip(frame_paths, blends)]
 	height, width = frames[0].shape[:2]
@@ -283,7 +317,7 @@ def convert_sprite(job):
 		fmt, gpu_format = 'rgba8', GPU_RGBA8
 	else:
 		fmt, gpu_format = 'etc1a4', GPU_ETC1A4
-	quality = 'high' if folder in UI_FOLDERS else 'medium'
+	quality = 'medium'
 
 	blobs = []
 	with tempfile.TemporaryDirectory() as workdir:
@@ -352,7 +386,9 @@ def convert_images(source, output, jobs, tex3ds, masktool, only=None):
 	for font in (images_root / 'font').glob('*.png'):
 		shutil.copy2(font, font_out / font.name)
 
-	work = [(name, frames, masks, blends, tex3ds, masktool) for name, frames, masks, blends in sprites]
+	cache_dir = output.parent / (output.name + '.cache')
+	cache_dir.mkdir(parents=True, exist_ok=True)
+	work = [(name, frames, masks, blends, tex3ds, masktool, str(cache_dir)) for name, frames, masks, blends in sprites]
 	index_path = output / 'images.idx'
 	pack_path = output / 'images.pak'
 	done = 0

@@ -293,10 +293,13 @@ void TextureCache::Init(const string &packPath)
 	quitting = false;
 	s32 priority = 0x30;
 	svcGetThreadPriority(&priority, CUR_THREAD_HANDLE);
+	// Slightly lower priority than the game (higher numbers are lower), within
+	// the valid range of 0x18 to 0x3F.
+	priority = min<s32>(0x3F, priority + 1);
 	int core = Platform::IsNew3DS() ? 2 : 1;
-	loader = threadCreate(LoaderThread, nullptr, 32 * 1024, priority + 1, core, false);
+	loader = threadCreate(LoaderThread, nullptr, 32 * 1024, priority, core, false);
 	if(!loader)
-		loader = threadCreate(LoaderThread, nullptr, 32 * 1024, priority + 1, -2, false);
+		loader = threadCreate(LoaderThread, nullptr, 32 * 1024, priority, -2, false);
 }
 
 

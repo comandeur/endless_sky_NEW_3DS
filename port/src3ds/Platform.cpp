@@ -131,6 +131,15 @@ size_t Platform::LinearFree()
 
 void Platform::FatalError(const string &message)
 {
+	// Keep a copy of the message: the error screen is easy to dismiss.
+	FILE *file = fopen("sdmc:/3ds/endless-sky/fatal-error.txt", "w");
+	if(file)
+	{
+		fputs(message.c_str(), file);
+		fputc('\n', file);
+		fclose(file);
+	}
+
 	errorConf error;
 	errorInit(&error, ERROR_TEXT_WORD_WRAP, CFG_LANGUAGE_EN);
 	errorText(&error, ("Endless Sky has encountered an error and must close:\n\n" + message).c_str());

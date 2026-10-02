@@ -188,8 +188,16 @@ void GameLoop(PlayerInfo &player, TaskQueue &queue, const Conversation &conversa
 	Display::BeginFrame(mode);
 	Display::EndFrame();
 
+	int debugIterations = 0;
+	auto Trace = [&debugIterations](const char *what)
+	{
+		if(debugIterations < 6)
+			Logger::Log(string("DEBUG loop ") + to_string(debugIterations) + ": " + what, Logger::Level::INFO);
+	};
 	while(!menuPanels.IsDone())
 	{
+		++debugIterations;
+		Trace("begin");
 		chrono::steady_clock::time_point start = chrono::steady_clock::now();
 		if(++step == 60)
 			step = 0;
@@ -250,8 +258,10 @@ void GameLoop(PlayerInfo &player, TaskQueue &queue, const Conversation &conversa
 		if(Preferences::Has("Interrupt fast-forward") && !inFlight && isFastForward && !allowFastForward)
 			isFastForward = false;
 
+		Trace("events done");
 		// Tell all the panels to step forward, then draw them.
 		(menuPanels.IsEmpty() ? gamePanels : menuPanels).StepAll();
+		Trace("step done");
 
 		// In fast-forward, only one step in three is drawn.
 		bool draw = !(isFastForward && inFlight && step % 3);
@@ -270,11 +280,13 @@ void GameLoop(PlayerInfo &player, TaskQueue &queue, const Conversation &conversa
 		}
 		if(draw)
 			DrawFrame(menuPanels, gamePanels, mode, isFastForward, lastFrameTime, step);
+		Trace(draw ? "drawn" : "not drawn");
 
 		lastFrameTime = chrono::steady_clock::now() - start;
 
 		// Lock the game loop to 60 FPS.
 		timer.Wait();
+		Trace("waited");
 
 		// If the player ended this frame in-game, count the elapsed time as played time.
 		if(menuPanels.IsEmpty())

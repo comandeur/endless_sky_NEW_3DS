@@ -82,12 +82,9 @@ protected:
 
 private:
 	Point size;
-	// The texture is a power of two, at least as large as the buffer.
-	C3D_Tex texture{};
-	C3D_RenderTarget *target = nullptr;
-	Gfx::TargetState previous;
+	// On the 3DS the contents are recorded drawing commands, which are
+	// replayed (moved and clipped) wherever the buffer is drawn.
+	Gfx::CommandList commands;
 	bool active = false;
-	// Texture pixels per unit (less than one if the buffer is larger than 1024).
-	float scale = 1.f;
 	float fadePadding[4] = {};
 };
