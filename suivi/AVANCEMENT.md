@@ -17,7 +17,7 @@ Mis à jour au fil de la session.
 | HUD sur l'écran du bas + boutons tactiles | ✅ vérifié en émulateur (radar, état, PAUSE, INFO) |
 | Parcours complet : nouveau pilote → nom (clavier Y) → achat vaisseau → décollage → vol → carte | ✅ vérifié en émulateur |
 | Démarrage complet dans l'émulateur (mémoire New 3DS, 124 Mo) | ✅ menu principal affiché |
-| CIA (mémoire étendue 124/178 Mo) | ⏳ à faire |
+| CIA (mode New 3DS 124 Mo, 804 MHz, L2, cœur 2) | ✅ construit, exheader vérifié avec ctrtool ; pas testable dans Panda3DS |
 | Test sur vraie console | ⏳ par l'utilisateur |
 
 ## Problèmes rencontrés et corrections
@@ -46,14 +46,20 @@ Mis à jour au fil de la session.
 8. La loupe suit les panneaux : centrée sur un dialogue qui s'ouvre (à gauche pour les
    conversations), position restaurée quand il se ferme.
 
+9. Mémoire mesurée : ~49 Mo de heap pour les données chargées. Nouveau partage :
+   heap ≈ 64 Mo, le reste en mémoire linéaire (budget textures 31 → 41 Mo).
+   Sous 52 Mo de heap libre, le jeu affiche « Not enough memory » (conseille le CIA).
+
 Limite émulateur : pas de service `ir:rst` → ZL/ZR/C-Stick non testables (saut, atterrissage).
 
 ## Prochaines étapes
 
 - [x] Émulateur en mode mémoire New 3DS, vérifier le chargement complet et le menu principal
-- [ ] Mesurer heap/linéaire réellement utilisés ; réduire si besoin
+- [x] Mesurer heap/linéaire réellement utilisés ; réduire si besoin
 - [x] Vérifier le vol : monde en haut, HUD en bas, boutons tactiles
 - [x] Vérifier une planète / boutique avec la loupe tactile
-- [ ] Construire un CIA avec mémoire étendue (makerom) et le documenter
-- [ ] Retirer les traces DEBUG de `main.cpp` avant la version finale
-- [ ] Mettre à jour le README (état, limitations)
+- [x] Construire un CIA avec mémoire étendue (makerom) et le documenter
+- [x] Retirer les traces DEBUG de `main.cpp` avant la version finale
+- [x] Mettre à jour le README (état, limitations)
+- [ ] Test sur vraie New 3DS (par l'utilisateur) : CIA, son, ZL/ZR, C-Stick, performances
+- [ ] Réactiver les mipmaps de la police si le rendu le permet

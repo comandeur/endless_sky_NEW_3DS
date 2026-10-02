@@ -71,3 +71,29 @@ ctr_generate_smdh(endless-sky.smdh
 	AUTHOR "Endless Sky contributors / 3DS port"
 	ICON "${CMAKE_SOURCE_DIR}/port/meta/icon.png")
 ctr_create_3dsx(endless-sky SMDH endless-sky.smdh)
+
+# The CIA version (installed to the HOME Menu), which gets the New 3DS memory
+# mode. It needs makerom and bannertool, which the Docker image provides.
+find_program(MAKEROM makerom)
+find_program(BANNERTOOL bannertool)
+if(MAKEROM AND BANNERTOOL)
+	add_custom_command(OUTPUT endless-sky.bnr
+		COMMAND "${BANNERTOOL}" makebanner
+			-i "${CMAKE_SOURCE_DIR}/port/meta/banner.png"
+			-a "${CMAKE_SOURCE_DIR}/port/meta/banner.wav"
+			-o endless-sky.bnr
+		DEPENDS "${CMAKE_SOURCE_DIR}/port/meta/banner.png" "${CMAKE_SOURCE_DIR}/port/meta/banner.wav"
+		VERBATIM)
+	add_custom_command(OUTPUT endless-sky.cia
+		COMMAND "${MAKEROM}" -f cia -o endless-sky.cia -target t -exefslogo
+			-elf "$<TARGET_FILE:endless-sky>"
+			-rsf "${CMAKE_SOURCE_DIR}/port/meta/endless-sky.rsf"
+			-icon "${CMAKE_CURRENT_BINARY_DIR}/endless-sky.smdh"
+			-banner endless-sky.bnr
+		DEPENDS endless-sky endless-sky.bnr "${CMAKE_SOURCE_DIR}/port/meta/endless-sky.rsf"
+			"${CMAKE_CURRENT_BINARY_DIR}/endless-sky.smdh"
+		VERBATIM)
+	add_custom_target(cia ALL DEPENDS endless-sky.cia)
+else()
+	message(STATUS "makerom or bannertool not found: the CIA will not be built.")
+endif()

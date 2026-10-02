@@ -149,8 +149,15 @@ int main(int argc, char *argv[])
 	}
 
 	Logger::Session logSession{false};
-	Logger::Log("Memory: heap " + to_string(Platform::HeapFree() >> 20) + " MB free, linear "
-		+ to_string(Platform::LinearFree() >> 20) + " MB free.", Logger::Level::INFO);
+	Logger::Log("Memory: heap " + to_string(Platform::HeapFree() >> 20) + " MB free.", Logger::Level::INFO);
+	// The game data takes about 50 MB once loaded. Some launchers give a
+	// .3dsx less memory than that; say so instead of crashing while loading.
+	constexpr size_t HEAP_NEEDED = 52 << 20;
+	if(Platform::HeapFree() < HEAP_NEEDED)
+		Platform::FatalError("Not enough memory: " + to_string(Platform::HeapFree() >> 20) + " MB free, "
+			+ to_string(HEAP_NEEDED >> 20) + " MB needed.\n\nInstall endless-sky.cia with FBI and start the game "
+			"from the HOME Menu: it gets the New 3DS memory mode.\n\n"
+			"Pas assez de memoire : installez endless-sky.cia avec FBI et lancez le jeu depuis le menu HOME.");
 
 	try {
 		Preferences::Load();
@@ -234,16 +241,16 @@ void GameLoop(PlayerInfo &player, TaskQueue &queue, const Conversation &conversa
 	Display::BeginFrame(mode);
 	Display::EndFrame();
 
-	int debugIterations = 0;
-	auto Trace = [&debugIterations](const char *what)
-	{
-		if(debugIterations < 6)
-			Logger::Log(string("DEBUG loop ") + to_string(debugIterations) + ": " + what, Logger::Level::INFO);
-	};
+	bool loggedMemory = false;
 	while(!menuPanels.IsDone())
 	{
-		++debugIterations;
-		Trace("begin");
+		// For bug reports: how much memory is left once the data is loaded.
+		if(!loggedMemory && GameData::IsLoaded())
+		{
+			loggedMemory = true;
+			Logger::Log("Memory after loading: heap " + to_string(Platform::HeapFree() >> 20) + " MB free, linear "
+				+ to_string(Platform::LinearFree() >> 20) + " MB free.", Logger::Level::INFO);
+		}
 		chrono::steady_clock::time_point start = chrono::steady_clock::now();
 		if(++step == 60)
 			step = 0;
@@ -304,11 +311,9 @@ void GameLoop(PlayerInfo &player, TaskQueue &queue, const Conversation &conversa
 		if(Preferences::Has("Interrupt fast-forward") && !inFlight && isFastForward && !allowFastForward)
 			isFastForward = false;
 
-		Trace("events done");
 		// Tell all the panels to step forward, then draw them.
 		(menuPanels.IsEmpty() ? gamePanels : menuPanels).StepAll();
 		FollowPanels(menuPanels, gamePanels);
-		Trace("step done");
 
 		// In fast-forward, only one step in three is drawn.
 		bool draw = !(isFastForward && inFlight && step % 3);
@@ -327,13 +332,11 @@ void GameLoop(PlayerInfo &player, TaskQueue &queue, const Conversation &conversa
 		}
 		if(draw)
 			DrawFrame(menuPanels, gamePanels, mode, isFastForward, lastFrameTime, step);
-		Trace(draw ? "drawn" : "not drawn");
 
 		lastFrameTime = chrono::steady_clock::now() - start;
 
 		// Lock the game loop to 60 FPS.
 		timer.Wait();
-		Trace("waited");
 
 		// If the player ended this frame in-game, count the elapsed time as played time.
 		if(menuPanels.IsEmpty())

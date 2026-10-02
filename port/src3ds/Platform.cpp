@@ -151,9 +151,9 @@ void Platform::FatalError(const string &message)
 
 // Split the application's memory between the heap and the linear heap (the
 // memory that the GPU and the DSP can access). libctru caps the linear heap at
-// 32 MB, which is too little for the game's textures; here it gets 3/8 of the
-// memory instead (about 46 MB on a New 3DS running homebrew, 66 MB in the
-// extended memory mode). This replaces libctru's weak implementation.
+// 32 MB, which is too little for the game's textures; here the heap gets what
+// the game data needs and the linear heap everything else (about 52 MB in the
+// New 3DS memory mode). This replaces libctru's weak implementation.
 extern "C" {
 	extern char *fake_heap_start;
 	extern u32 __ctru_heap;
@@ -173,9 +173,15 @@ extern "C" {
 		svcGetResourceLimitCurrentValues(&currentCommit, reslimit, &reslimitType, 1);
 		svcCloseHandle(reslimit);
 
+		// The game data needs about 50 MB of regular heap once loaded, plus
+		// room for playing. Everything else goes to the linear heap, which
+		// holds the textures: the more it has, the less often they are loaded.
+		constexpr u32 HEAP_TARGET = 64 << 20;
+		constexpr u32 LINEAR_MIN = 16 << 20;
+		constexpr u32 LINEAR_MAX = 80 << 20;
 		u32 remaining = static_cast<u32>(maxCommit - currentCommit) & ~0xFFF;
-		u32 linear = (remaining / 8 * 3) & ~0xFFF;
-		linear = std::max<u32>(16 << 20, std::min<u32>(linear, 72 << 20));
+		u32 linear = remaining > HEAP_TARGET ? remaining - HEAP_TARGET : 0;
+		linear = std::max(LINEAR_MIN, std::min(linear, LINEAR_MAX));
 		if(linear > remaining / 2)
 			linear = (remaining / 2) & ~0xFFF;
 		__ctru_linear_heap_size = linear;

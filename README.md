@@ -3,9 +3,11 @@
 Portage homebrew d'[Endless Sky](https://github.com/endless-sky/endless-sky) **0.11.3**
 (la dernière version) pour New 3DS / New 2DS XL modée, qui tire parti des deux écrans.
 
-> **État : expérimental.** Le jeu compile en `.3dsx` et le portage a été testé dans
-> un émulateur, mais pas encore sur une vraie console. Les retours (logs, captures,
-> plantages) sont les bienvenus : voir [Signaler un problème](#signaler-un-problème).
+> **État : expérimental.** Le jeu compile et a été testé de bout en bout dans un
+> émulateur (Panda3DS, mode mémoire New 3DS) : nouveau pilote, achat d'un vaisseau,
+> décollage, vol, carte stellaire, menus avec la loupe tactile. Il n'a pas encore été
+> essayé sur une vraie console. Les retours (logs, captures, plantages) sont les
+> bienvenus : voir [Signaler un problème](#signaler-un-problème).
 
 *English summary: a homebrew port of Endless Sky 0.11.3 to the New Nintendo 3DS,
 using citro3d for rendering, NDSP for audio, and both screens: the game world on the
@@ -64,12 +66,12 @@ aides du jeu affichent le nom des boutons 3DS) :
 | Bouton | Action |
 | --- | --- |
 | Écran tactile | Souris (toucher = clic, glisser = faire glisser) |
-| Circle Pad | Déplacer la loupe |
+| Circle Pad | Déplacer la loupe (elle se centre d'elle-même sur les fenêtres qui s'ouvrent) |
 | Croix | Flèches du clavier |
 | A | Entrée |
 | B ou Start | Échap (retour) |
 | X | Tab |
-| Y | Clavier virtuel, quand un champ de texte est actif |
+| Y | Clavier virtuel (nom du pilote, nom du vaisseau, recherche...) |
 | L (maintenu) | Maj (acheter/vendre par 5, etc.) |
 | R (maintenu) | Ctrl (acheter/vendre par 20, etc.) |
 | ZL / ZR | Page précédente / suivante |
@@ -78,22 +80,29 @@ aides du jeu affichent le nom des boutons 3DS) :
 
 ## Installation
 
-Il faut une **New 3DS ou New 2DS XL** avec un custom firmware (Luma3DS) et le
-Homebrew Launcher. Pour avoir du son, le firmware DSP doit avoir été extrait une
-fois avec l'outil *DSP1* (fichier `sdmc:/3ds/dspfirm.cdc`) ; c'est déjà le cas sur
-la plupart des consoles modées.
+Il faut une **New 3DS ou New 2DS XL** avec un custom firmware (Luma3DS). Pour avoir
+du son, le firmware DSP doit avoir été extrait une fois avec l'outil *DSP1* (fichier
+`sdmc:/3ds/dspfirm.cdc`) ; c'est déjà le cas sur la plupart des consoles modées.
 
 1. Compiler le jeu et convertir les données (voir ci-dessous), ou récupérer une
    version déjà compilée.
-2. Copier `endless-sky.3dsx` dans `sdmc:/3ds/` sur la carte SD.
-3. Copier **le contenu** de `assets-out/endless-sky/` dans `sdmc:/3ds/endless-sky/`.
+2. Copier **le contenu** de `assets-out/endless-sky/` dans `sdmc:/3ds/endless-sky/`.
    Il doit y avoir par exemple `sdmc:/3ds/endless-sky/credits.txt` et
-   `sdmc:/3ds/endless-sky/images.pak`.
-4. Lancer *Endless Sky* depuis le Homebrew Launcher.
+   `sdmc:/3ds/endless-sky/images.pak` (environ 80 Mo).
+3. **Version recommandée : le CIA.** Copier `endless-sky.cia` sur la carte SD,
+   l'installer avec **FBI**, puis lancer *Endless Sky* depuis le menu HOME.
+4. Autre possibilité : copier `endless-sky.3dsx` dans `sdmc:/3ds/` et le lancer depuis
+   le Homebrew Launcher.
+
+**Pourquoi le CIA ?** Les données du jeu occupent environ 50 Mo de mémoire une fois
+chargées, plus la mémoire des textures. Le CIA demande le mode mémoire de la New 3DS
+(124 Mo pour le jeu), le processeur à 804 MHz et le cache L2. Un `.3dsx` reçoit la
+mémoire du titre qui héberge le Homebrew Launcher, qui peut être trop faible : dans ce
+cas le jeu s'arrête au démarrage avec le message *Not enough memory*.
 
 Les sauvegardes et préférences sont dans `sdmc:/3ds/endless-sky/config/` (les
 sauvegardes du jeu PC sont compatibles : il suffit de copier les fichiers de
-`saves/`).
+`saves/`). Le CIA et le `.3dsx` utilisent les mêmes données et les mêmes sauvegardes.
 
 ## Compilation
 
@@ -105,7 +114,7 @@ minizip).
 git clone --recursive https://github.com/comandeur/endless_sky_NEW_3DS.git
 cd endless_sky_NEW_3DS
 
-# Le jeu : produit build/endless-sky.3dsx
+# Le jeu : produit build/endless-sky.3dsx et build/endless-sky.cia
 tools/docker-build.sh
 
 # Les données du jeu (images, sons, textes) : produit assets-out/endless-sky/
@@ -120,6 +129,10 @@ cmake -B build -DCMAKE_TOOLCHAIN_FILE=$DEVKITPRO/cmake/3DS.cmake
 cmake --build build
 python3 tools/assets/convert.py    # nécessite Pillow, numpy, tex3ds et g++
 ```
+
+Le CIA n'est produit que si `makerom` et `bannertool` sont dans le `PATH` (l'image
+Docker de `tools/docker/` les compile). Ses réglages sont dans
+`port/meta/endless-sky.rsf`.
 
 ## Comment fonctionne le portage
 
@@ -161,6 +174,8 @@ originaux.
 - Les plugins sont lus, mais leurs images (PNG/JPEG) sont décodées sur la console :
   c'est lent, et les images AVIF ne sont pas prises en charge.
 - La loupe des menus demande de se déplacer dans les grands écrans (boutiques).
+- Quelques aides du jeu citent des touches sans équivalent sur la 3DS (F1, F pour
+  chercher dans la carte : utiliser Y pour taper « f », puis le nom recherché).
 - La fréquence d'images en vol dépend du nombre de vaisseaux : le jeu dessine moins
   d'images quand il est en retard, mais la simulation reste à vitesse normale.
 
