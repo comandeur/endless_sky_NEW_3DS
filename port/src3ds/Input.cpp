@@ -272,7 +272,10 @@ namespace {
 
 		if(down & KEY_SELECT)
 			Display::CycleLensZoom();
-		if((down & KEY_Y) && textInput)
+		// Some panels (the pilot name, text dialogs) read typed characters as
+		// key presses instead of text input events, so the keyboard is always
+		// available in menus.
+		if(down & KEY_Y)
 			Input::OpenKeyboard();
 
 		// Circle pad: move the lens over the canvas.
@@ -477,6 +480,22 @@ void Input::OpenKeyboard()
 	PressKey(SDLK_END);
 	for(int i = 0; i < 100; ++i)
 		PressKey(SDLK_BACKSPACE);
+
+	if(!textInput)
+	{
+		// Type the characters one at a time. Panels apply the shift key
+		// themselves, so capital letters are sent as shifted lowercase keys.
+		for(const char *it = buffer; *it; ++it)
+		{
+			char c = *it;
+			if(c < ' ' || c > '~')
+				continue;
+			SDL_Event event = KeyEvent(SDL_KEYDOWN, (c >= 'A' && c <= 'Z') ? c - 'A' + 'a' : c, false);
+			event.key.keysym.mod = (c >= 'A' && c <= 'Z') ? KMOD_LSHIFT : KMOD_NONE;
+			events.push_back(event);
+		}
+		return;
+	}
 
 	// Text input events hold at most 31 bytes; split on UTF-8 boundaries.
 	size_t length = strlen(buffer);

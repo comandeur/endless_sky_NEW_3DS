@@ -126,6 +126,10 @@ namespace Gfx {
 		std::vector<Batch> batches;
 		// The logical area of the recording, for Clear().
 		float area[4] = {};
+		// Where the vertices were copied in the vertex arena, so that a list
+		// replayed several times in a frame (on both screens) is copied once.
+		mutable unsigned copiedFrame = 0;
+		mutable int copiedBase = 0;
 
 		friend struct GfxInternal;
 	};

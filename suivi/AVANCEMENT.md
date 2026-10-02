@@ -14,7 +14,8 @@ Mis à jour au fil de la session.
 | Streaming des textures (`ctr/TextureCache`, images.idx/pak) | ✅ compile, à vérifier visuellement |
 | Audio : mini-OpenAL sur NDSP, sons IMA ADPCM | ✅ compile, non testé (pas de DSP dans l'émulateur) |
 | Convertisseur d'assets (`tools/assets/convert.py`) | ✅ conversion complète OK : 3338 sprites, pack 57 Mo, total 79 Mo |
-| HUD sur l'écran du bas + boutons tactiles | ✅ code écrit, non vu en émulateur |
+| HUD sur l'écran du bas + boutons tactiles | ✅ vérifié en émulateur (radar, état, PAUSE, INFO) |
+| Parcours complet : nouveau pilote → nom (clavier Y) → achat vaisseau → décollage → vol → carte | ✅ vérifié en émulateur |
 | Démarrage complet dans l'émulateur (mémoire New 3DS, 124 Mo) | ✅ menu principal affiché |
 | CIA (mémoire étendue 124/178 Mo) | ⏳ à faire |
 | Test sur vraie console | ⏳ par l'utilisateur |
@@ -35,12 +36,24 @@ Mis à jour au fil de la session.
    ⇒ les données demandent ~65-70 Mo de heap : il faut le mode mémoire étendu
    (CIA, ou .3dsx lancé depuis un titre qui donne 124 Mo).
 
+6. Écran du bas noir sur les longs textes : le canevas était copié deux fois dans
+   l'arène de sommets (un rejeu par écran) → arène pleine. Correction : copie unique
+   par image (`copiedFrame`), et la police réserve le nombre exact de sommets.
+   Pic mesuré : ~50k sommets / 98k.
+7. Saisie du nom : `ConversationPanel` et `DialogPanel` lisent les caractères via
+   `KeyDown`, pas via `SDL_TEXTINPUT` → Y ouvre toujours le clavier en menu ; le texte
+   est envoyé en `TEXTINPUT` si un `Edit` a le focus, sinon en touches.
+8. La loupe suit les panneaux : centrée sur un dialogue qui s'ouvre (à gauche pour les
+   conversations), position restaurée quand il se ferme.
+
+Limite émulateur : pas de service `ir:rst` → ZL/ZR/C-Stick non testables (saut, atterrissage).
+
 ## Prochaines étapes
 
 - [x] Émulateur en mode mémoire New 3DS, vérifier le chargement complet et le menu principal
 - [ ] Mesurer heap/linéaire réellement utilisés ; réduire si besoin
-- [ ] Vérifier le vol : monde en haut, HUD en bas, boutons tactiles
-- [ ] Vérifier une planète / boutique avec la loupe tactile
+- [x] Vérifier le vol : monde en haut, HUD en bas, boutons tactiles
+- [x] Vérifier une planète / boutique avec la loupe tactile
 - [ ] Construire un CIA avec mémoire étendue (makerom) et le documenter
 - [ ] Retirer les traces DEBUG de `main.cpp` avant la version finale
 - [ ] Mettre à jour le README (état, limitations)

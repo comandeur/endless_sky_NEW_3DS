@@ -77,6 +77,8 @@ namespace Display {
 	// Lens (bottom screen view of the menu canvas).
 	void MoveLens(double dx, double dy);
 	void CenterLensOn(const Point &canvasPoint);
+	// Center of the lens, relative to the top left of the canvas.
+	Point LensCenter();
 	void CycleLensZoom();
 	double LensScale();
 

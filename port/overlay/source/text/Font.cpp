@@ -108,11 +108,32 @@ void Font::DrawAliased(const string &str, double x, double y, const Color &color
 	if(!c.a && !c.r && !c.g && !c.b)
 		return;
 
-	// Each character may need a second quad for its underline.
-	Gfx::Vertex *v = Gfx::Triangles(12 * str.size(), Gfx::Material::ALPHA_MASK, texture);
+	// Count the quads first: spaces need none, underlined characters two.
+	int quads = 0;
+	{
+		bool afterSpace = true;
+		bool underline = false;
+		for(char ch : str)
+		{
+			if(ch == '_')
+			{
+				underline = showUnderlines;
+				continue;
+			}
+			int glyph = Glyph(ch, afterSpace);
+			if(ch != '"' && ch != '\'')
+				afterSpace = !glyph;
+			if(!glyph)
+				continue;
+			quads += 1 + underline;
+			underline = false;
+		}
+	}
+	if(!quads)
+		return;
+	Gfx::Vertex *v = Gfx::Triangles(6 * quads, Gfx::Material::ALPHA_MASK, texture);
 	if(!v)
 		return;
-	Gfx::Vertex *const begin = v;
 
 	float textX = static_cast<float>(x - 1.);
 	float textY = static_cast<float>(y);
@@ -169,9 +190,6 @@ void Font::DrawAliased(const string &str, double x, double y, const Color &color
 		previous = glyph;
 	}
 
-	// Turn the vertices that were not needed into degenerate triangles.
-	for(Gfx::Vertex *it = v; it != begin + 12 * str.size(); ++it)
-		*it = begin[0];
 }
 
 

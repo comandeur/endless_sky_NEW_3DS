@@ -17,6 +17,7 @@ this program. If not, see <https://www.gnu.org/licenses/>.
 #include "audio/Audio.h"
 #include "Command.h"
 #include "Conversation.h"
+#include "ConversationPanel.h"
 #include "CustomEvents.h"
 #include "DataFile.h"
 #include "DataNode.h"
@@ -52,6 +53,7 @@ this program. If not, see <https://www.gnu.org/licenses/>.
 #include <chrono>
 #include <exception>
 #include <string>
+#include <vector>
 
 using namespace std;
 
@@ -66,6 +68,48 @@ namespace {
 
 
 	// Which screen layout the current state of the panels calls for.
+	// Move the lens of the bottom screen to a panel when it opens, and back to
+	// where it was on the panel below when it closes.
+	void FollowPanels(const UI &menuPanels, const UI &gamePanels)
+	{
+		static vector<const Panel *> panels;
+		static vector<Point> lensCenters;
+
+		vector<const Panel *> current;
+		for(const UI *ui : {&gamePanels, &menuPanels})
+			for(const shared_ptr<Panel> &panel : ui->Stack())
+				current.push_back(panel.get());
+		if(current == panels)
+			return;
+
+		// Remember the lens position of the panels that are still open.
+		size_t common = 0;
+		while(common < current.size() && common < panels.size() && current[common] == panels[common])
+			++common;
+		lensCenters.resize(current.size());
+		if(common && common == current.size())
+		{
+			// Panels were closed: go back to the lens position of the new top.
+			Display::CenterLensOn(lensCenters[common - 1]);
+		}
+		else if(!current.empty())
+		{
+			if(common && common <= panels.size())
+				lensCenters[common - 1] = Display::LensCenter();
+			// A new panel: conversations fill the left side, everything else
+			// (dialogs, help messages, full screen panels) is centered.
+			const Panel *top = current.back();
+			Point center(Display::MENU_WIDTH * .5, Display::MENU_HEIGHT * .5);
+			if(dynamic_cast<const ConversationPanel *>(top))
+				center = Point(290., Display::MENU_HEIGHT * .5);
+			Display::CenterLensOn(center);
+			for(size_t i = common; i < current.size(); ++i)
+				lensCenters[i] = center;
+		}
+		panels = std::move(current);
+	}
+
+
 	Display::Mode CurrentMode(const UI &menuPanels, const UI &gamePanels)
 	{
 		bool inFlight = menuPanels.IsEmpty() && !gamePanels.IsEmpty() && gamePanels.Root() == gamePanels.Top();
@@ -263,6 +307,7 @@ void GameLoop(PlayerInfo &player, TaskQueue &queue, const Conversation &conversa
 		Trace("events done");
 		// Tell all the panels to step forward, then draw them.
 		(menuPanels.IsEmpty() ? gamePanels : menuPanels).StepAll();
+		FollowPanels(menuPanels, gamePanels);
 		Trace("step done");
 
 		// In fast-forward, only one step in three is drawn.

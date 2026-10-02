@@ -38,6 +38,8 @@ namespace Gfx {
 		static vector<Batch> &Batches(CommandList &list) { return list.batches; }
 		static const vector<Batch> &Batches(const CommandList &list) { return list.batches; }
 		static float *Area(CommandList &list) { return list.area; }
+		static unsigned &CopiedFrame(const CommandList &list) { return list.copiedFrame; }
+		static int &CopiedBase(const CommandList &list) { return list.copiedBase; }
 	};
 }
 
@@ -69,6 +71,9 @@ namespace {
 	Gfx::Vertex *arenas[ARENA_COUNT] = {};
 	int arenaIndex = 0;
 	int arenaUsed = 0;
+	int arenaPeak = 0;
+	// Frame counter, never 0 (the "not copied" value of the lists).
+	unsigned frameNumber = 0;
 	bool warnedFull = false;
 
 	bool inFrame = false;
@@ -337,15 +342,21 @@ namespace {
 	void ReplayList(const Gfx::CommandList &list, float dx, float dy, const float *clip)
 	{
 		const vector<Gfx::Vertex> &vertices = GfxInternal::Vertices(list);
-		Gfx::Vertex *copy = nullptr;
 		int base = 0;
 		if(!vertices.empty())
 		{
-			copy = ArenaAlloc(vertices.size());
-			if(!copy)
-				return;
-			memcpy(copy, vertices.data(), vertices.size() * sizeof(Gfx::Vertex));
-			base = copy - arenas[arenaIndex];
+			if(GfxInternal::CopiedFrame(list) == frameNumber)
+				base = GfxInternal::CopiedBase(list);
+			else
+			{
+				Gfx::Vertex *copy = ArenaAlloc(vertices.size());
+				if(!copy)
+					return;
+				memcpy(copy, vertices.data(), vertices.size() * sizeof(Gfx::Vertex));
+				base = copy - arenas[arenaIndex];
+				GfxInternal::CopiedFrame(list) = frameNumber;
+				GfxInternal::CopiedBase(list) = base;
+			}
 		}
 		for(const Batch &batch : GfxInternal::Batches(list))
 		{
@@ -403,6 +414,7 @@ void Gfx::CommandList::Clear()
 {
 	vertices.clear();
 	batches.clear();
+	copiedFrame = 0;
 }
 
 
@@ -489,6 +501,8 @@ void Gfx::BeginFrame()
 
 	arenaIndex = (arenaIndex + 1) % ARENA_COUNT;
 	arenaUsed = 0;
+	if(!++frameNumber)
+		frameNumber = 1;
 	pendingCount = 0;
 	appliedValid = false;
 	scissorEnabled = true;
@@ -520,6 +534,12 @@ void Gfx::EndFrame()
 	inFrame = false;
 	lastDrawCalls = drawCalls;
 	lastVertices = arenaUsed;
+	if(arenaUsed > arenaPeak + 8192)
+	{
+		arenaPeak = arenaUsed;
+		Logger::Log("Gfx: vertex arena peak " + to_string(arenaPeak) + " / " + to_string(ARENA_VERTICES) + ".",
+			Logger::Level::INFO);
+	}
 }
 
 

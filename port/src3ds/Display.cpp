@@ -318,6 +318,13 @@ void Display::CenterLensOn(const Point &canvasPoint)
 
 
 
+Point Display::LensCenter()
+{
+	return lensCenter;
+}
+
+
+
 void Display::CycleLensZoom()
 {
 	lensZoom = (lensZoom + 1) % (sizeof(LENS_SCALES) / sizeof(LENS_SCALES[0]));
