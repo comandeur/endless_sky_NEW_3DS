@@ -105,6 +105,8 @@ int main(int argc, char *argv[])
 	}
 
 	Logger::Session logSession{false};
+	Logger::Log("Memory: heap " + to_string(Platform::HeapFree() >> 20) + " MB free, linear "
+		+ to_string(Platform::LinearFree() >> 20) + " MB free.", Logger::Level::INFO);
 
 	try {
 		Preferences::Load();

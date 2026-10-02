@@ -1,0 +1,22 @@
+--- a/source/UniverseObjects.cpp
++++ b/source/UniverseObjects.cpp
+@@ -63,7 +63,19 @@
+ 			const double step = 1. / (static_cast<int>(files.size()) + 1);
+ 			for(const auto &path : files)
+ 			{
++#ifdef __3DS__
++				// An exception here would terminate the game without a trace.
++				try {
++					LoadFile(path, player, globalConditions, debugMode);
++				}
++				catch(const exception &error)
++				{
++					Logger::Log("Error while loading \"" + path.string() + "\": " + error.what(),
++						Logger::Level::ERROR);
++				}
++#else
+ 				LoadFile(path, player, globalConditions, debugMode);
++#endif
+ 
+ 				// Increment the atomic progress by one step.
+ 				// We use acquire + release to prevent any reordering.

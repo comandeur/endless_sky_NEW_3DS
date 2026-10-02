@@ -15,7 +15,7 @@ Mis à jour au fil de la session.
 | Audio : mini-OpenAL sur NDSP, sons IMA ADPCM | ✅ compile, non testé (pas de DSP dans l'émulateur) |
 | Convertisseur d'assets (`tools/assets/convert.py`) | ✅ conversion complète OK : 3338 sprites, pack 57 Mo, total 79 Mo |
 | HUD sur l'écran du bas + boutons tactiles | ✅ code écrit, non vu en émulateur |
-| Démarrage complet dans l'émulateur | 🔧 en cours (voir problèmes) |
+| Démarrage complet dans l'émulateur (mémoire New 3DS, 124 Mo) | ✅ menu principal affiché |
 | CIA (mémoire étendue 124/178 Mo) | ⏳ à faire |
 | Test sur vraie console | ⏳ par l'utilisateur |
 
@@ -29,12 +29,15 @@ Mis à jour au fil de la session.
    `TaskQueue` en overlay : threads libctru sur les cœurs 1/2, attente par `svcSleepThread`.
 4. Priorité de thread > 0x3F → bornée.
 5. Chargement des données : exception dans une lambda `noexcept` → `terminate`.
-   Cause probable : manque de mémoire (l'émulateur ne donne que 80 Mo à l'appli).
-   → prochaine étape : émulateur réglé sur 124 Mo (New 3DS), et mesurer la mémoire.
+   Patch `0006` (log des erreurs de chargement) : c'était bien `std::bad_alloc`.
+   L'émulateur ne donnait que 80 Mo à l'appli (heap 45 Mo). Réglé sur 124 Mo
+   (mémoire New 3DS) : heap libre 73 Mo, budget textures 31 Mo, chargement OK.
+   ⇒ les données demandent ~65-70 Mo de heap : il faut le mode mémoire étendu
+   (CIA, ou .3dsx lancé depuis un titre qui donne 124 Mo).
 
 ## Prochaines étapes
 
-- [ ] Émulateur en mode mémoire New 3DS, vérifier le chargement complet et le menu principal
+- [x] Émulateur en mode mémoire New 3DS, vérifier le chargement complet et le menu principal
 - [ ] Mesurer heap/linéaire réellement utilisés ; réduire si besoin
 - [ ] Vérifier le vol : monde en haut, HUD en bas, boutons tactiles
 - [ ] Vérifier une planète / boutique avec la loupe tactile
