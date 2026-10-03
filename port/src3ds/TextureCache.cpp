@@ -306,7 +306,11 @@ void TextureCache::Init(const string &packPath)
 
 void TextureCache::Quit()
 {
-	quitting = true;
+	{
+		// Under the lock, so that the loader cannot miss the wake-up.
+		lock_guard<mutex> lock(jobMutex);
+		quitting = true;
+	}
 	jobCondition.notify_all();
 	if(loader)
 	{

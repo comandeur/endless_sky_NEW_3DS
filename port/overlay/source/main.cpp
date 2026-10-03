@@ -18,6 +18,7 @@ this program. If not, see <https://www.gnu.org/licenses/>.
 #include "Command.h"
 #include "Conversation.h"
 #include "ConversationPanel.h"
+#include "DialogPanel.h"
 #include "CustomEvents.h"
 #include "DataFile.h"
 #include "DataNode.h"
@@ -33,6 +34,7 @@ this program. If not, see <https://www.gnu.org/licenses/>.
 #include "Interface.h"
 #include "Logger.h"
 #include "MainPanel.h"
+#include "MapPanel.h"
 #include "MenuPanel.h"
 #include "Panel.h"
 #include "PlayerInfo.h"
@@ -107,6 +109,23 @@ namespace {
 				lensCenters[i] = center;
 		}
 		panels = std::move(current);
+	}
+
+
+	// What the Y button can type into, given the panel on top.
+	Input::TextTarget TextTargetOf(const UI &menuPanels, const UI &gamePanels)
+	{
+		const UI &ui = menuPanels.IsEmpty() ? gamePanels : menuPanels;
+		if(ui.IsEmpty())
+			return Input::TextTarget::NONE;
+		const Panel *top = ui.Top().get();
+		if(const auto *dialog = dynamic_cast<const DialogPanel *>(top))
+			return dialog->TakesTextInput() ? Input::TextTarget::KEYS : Input::TextTarget::NONE;
+		if(dynamic_cast<const ConversationPanel *>(top))
+			return Input::TextTarget::KEYS;
+		if(dynamic_cast<const MapPanel *>(top))
+			return Input::TextTarget::SEARCH;
+		return Input::TextTarget::NONE;
 	}
 
 
@@ -266,8 +285,15 @@ void GameLoop(PlayerInfo &player, TaskQueue &queue, const Conversation &conversa
 			gamePanels.AdjustViewport();
 		}
 
+		Input::SetTextTarget(TextTargetOf(menuPanels, gamePanels));
+		// The game was closed from the HOME Menu (or the console is turning
+		// off): stop right away. The GPU belongs to the system now, so drawing
+		// another frame would wait forever.
 		if(!Input::Update(mode))
+		{
 			menuPanels.Quit();
+			break;
+		}
 
 		SDL_Event event;
 		while(SDL_PollEvent(&event))

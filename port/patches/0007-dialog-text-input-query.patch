@@ -1,0 +1,15 @@
+--- a/source/DialogPanel.h
++++ b/source/DialogPanel.h
+@@ -68,6 +68,12 @@
+ public:
+ 	virtual ~DialogPanel() override;
+ 
++#ifdef __3DS__
++	// Whether this dialog has a text or number field (the 3DS port only opens
++	// the software keyboard when there is something to type into).
++	bool TakesTextInput() const { return AcceptsInput(); }
++#endif
++
+ 	// An OK dialog that has no callback or cancel button. Only used for displaying information.
+ 	static DialogPanel *Info(std::string message, Truncate truncate = Truncate::NONE, bool allowsFastForward = false);
+ 

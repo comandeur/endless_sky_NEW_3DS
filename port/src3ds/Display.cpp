@@ -17,6 +17,7 @@ this program. If not, see <https://www.gnu.org/licenses/>.
 
 #include "Gfx.h"
 #include "Input.h"
+#include "Platform.h"
 #include "TextureCache.h"
 
 #include "../Color.h"
@@ -29,6 +30,7 @@ this program. If not, see <https://www.gnu.org/licenses/>.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <memory>
 
 using namespace std;
@@ -45,8 +47,12 @@ namespace {
 	Display::Mode mode = Display::Mode::MENU;
 
 	// The lens: the part of the menu canvas shown on the bottom screen.
-	const double LENS_SCALES[] = {1., .75, .5};
-	int lensZoom = 1;
+	// Lens sizes, from the most magnified to the least. 1 means one canvas
+	// pixel per screen pixel; the menus are made for 1024x768.
+	const double LENS_SCALES[] = {1.25, 1., .875, .75, .625, .5};
+	constexpr int LENS_ZOOMS = sizeof(LENS_SCALES) / sizeof(LENS_SCALES[0]);
+	constexpr int DEFAULT_LENS_ZOOM = 3;
+	int lensZoom = DEFAULT_LENS_ZOOM;
 	// Center of the lens, relative to the top left of the canvas.
 	Point lensCenter(Display::MENU_WIDTH * .5, Display::MENU_HEIGHT * .5);
 
@@ -99,6 +105,35 @@ namespace {
 	}
 
 
+	// The lens size is remembered in its own small file of the configuration.
+	string LensSettingPath()
+	{
+		return Platform::ConfigPath() + "3ds lens.txt";
+	}
+
+
+	void LoadLensZoom()
+	{
+		FILE *file = fopen(LensSettingPath().c_str(), "r");
+		if(!file)
+			return;
+		int value = 0;
+		if(fscanf(file, "%d", &value) == 1 && value >= 0 && value < LENS_ZOOMS)
+			lensZoom = value;
+		fclose(file);
+	}
+
+
+	void SaveLensZoom()
+	{
+		FILE *file = fopen(LensSettingPath().c_str(), "w");
+		if(!file)
+			return;
+		fprintf(file, "%d\n", lensZoom);
+		fclose(file);
+	}
+
+
 	void Frame(float left, float top, float right, float bottom, float width, const Color &color)
 	{
 		Gfx::FillRect(left, top, right, top + width, color);
@@ -128,6 +163,7 @@ namespace {
 
 bool Display::Init()
 {
+	LoadLensZoom();
 	return Gfx::Init();
 }
 
@@ -327,8 +363,27 @@ Point Display::LensCenter()
 
 void Display::CycleLensZoom()
 {
-	lensZoom = (lensZoom + 1) % (sizeof(LENS_SCALES) / sizeof(LENS_SCALES[0]));
+	SetLensZoom((lensZoom + 1) % LENS_ZOOMS);
+}
+
+
+
+void Display::ZoomLens(int steps)
+{
+	SetLensZoom(clamp(lensZoom - steps, 0, LENS_ZOOMS - 1));
+}
+
+
+
+void Display::SetLensZoom(int zoom)
+{
+	if(zoom != lensZoom)
+	{
+		lensZoom = zoom;
+		SaveLensZoom();
+	}
 	ClampLens();
+	ShowToast("Loupe / Magnifier : " + to_string(static_cast<int>(lround(LensScale() * 100.))) + " %");
 }
 
 

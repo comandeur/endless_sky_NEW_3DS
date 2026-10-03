@@ -48,6 +48,19 @@ namespace Input {
 	// Open the system software keyboard and send its text to the game.
 	void OpenKeyboard();
 
+	// What the Y button does in menus, depending on the panel on top. Text
+	// fields that are not Edit widgets read their characters as key presses.
+	enum class TextTarget {
+		// Nothing to type into: Y does nothing (typing letters there would
+		// trigger the menu's keyboard shortcuts).
+		NONE,
+		// A text field that reads key presses (pilot name, dialogs).
+		KEYS,
+		// A map: Y opens its search box.
+		SEARCH,
+	};
+	void SetTextTarget(TextTarget target);
+
 	// Name shown to the player for a key: the 3DS button it is mapped to, if any.
 	const char *KeyName(SDL_Keycode key);
 	SDL_Keycode KeyFromName(const char *name);

@@ -94,6 +94,18 @@ namespace {
 	u64 lastWheel = 0;
 
 	bool textInput = false;
+	Input::TextTarget textTarget = Input::TextTarget::NONE;
+
+
+	void RefreshHint()
+	{
+		if(textInput || textTarget == Input::TextTarget::KEYS)
+			Display::SetHint("Y : clavier / keyboard");
+		else if(textTarget == Input::TextTarget::SEARCH)
+			Display::SetHint("Y : rechercher / search");
+		else
+			Display::SetHint("");
+	}
 
 
 	SDL_Event KeyEvent(Uint32 type, SDL_Keycode key, bool repeat)
@@ -273,10 +285,18 @@ namespace {
 		if(down & KEY_SELECT)
 			Display::CycleLensZoom();
 		// Some panels (the pilot name, text dialogs) read typed characters as
-		// key presses instead of text input events, so the keyboard is always
-		// available in menus.
+		// key presses instead of text input events. Elsewhere, typed letters
+		// would act as keyboard shortcuts, so the keyboard only opens when
+		// there is something to type into.
 		if(down & KEY_Y)
-			Input::OpenKeyboard();
+		{
+			if(textInput || textTarget == Input::TextTarget::KEYS)
+				Input::OpenKeyboard();
+			else if(textTarget == Input::TextTarget::SEARCH)
+				PressKey(SDLK_f);
+			else
+				Display::ShowToast("Pas de champ de texte ici / No text field here");
+		}
 
 		// Circle pad: move the lens over the canvas.
 		circlePosition pad;
@@ -287,7 +307,13 @@ namespace {
 			Display::MoveLens(pad.dx / 156. * speed, -pad.dy / 156. * speed);
 		}
 
-		// C-stick: mouse wheel.
+		// C-stick left / right: lens size.
+		if(down & KEY_CSTICK_RIGHT)
+			Display::ZoomLens(1);
+		if(down & KEY_CSTICK_LEFT)
+			Display::ZoomLens(-1);
+
+		// C-stick up / down: mouse wheel.
 		if((held & (KEY_CSTICK_UP | KEY_CSTICK_DOWN)) && now - lastWheel > 100)
 		{
 			lastWheel = now;
@@ -442,18 +468,26 @@ void Input::WarpMouse(int x, int y)
 
 void Input::StartTextInput()
 {
-	if(!textInput)
-		Display::SetHint("Y: clavier / keyboard");
 	textInput = true;
+	RefreshHint();
 }
 
 
 
 void Input::StopTextInput()
 {
-	if(textInput)
-		Display::SetHint("");
 	textInput = false;
+	RefreshHint();
+}
+
+
+
+void Input::SetTextTarget(TextTarget target)
+{
+	if(target == textTarget)
+		return;
+	textTarget = target;
+	RefreshHint();
 }
 
 

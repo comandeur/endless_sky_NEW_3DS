@@ -79,7 +79,11 @@ namespace Display {
 	void CenterLensOn(const Point &canvasPoint);
 	// Center of the lens, relative to the top left of the canvas.
 	Point LensCenter();
+	// Change the size of the lens: cycle through the sizes, or zoom in (steps
+	// > 0) or out. The choice is remembered.
 	void CycleLensZoom();
+	void ZoomLens(int steps);
+	void SetLensZoom(int zoom);
 	double LensScale();
 
 	// Map a touch on the bottom screen (in pixels) to the coordinates that the

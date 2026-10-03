@@ -33,8 +33,9 @@ canevas de cette taille :
 - l'écran du bas est une **loupe** sur une partie du canevas, à taille lisible, et
   c'est elle que l'on touche avec le stylet : ce que l'on voit est ce que l'on touche.
 
-Le stick (Circle Pad) déplace la loupe, **Select** change son grossissement
-(100 %, 75 %, 50 %).
+Le stick (Circle Pad) déplace la loupe. Son grossissement se règle avec le
+**C-Stick gauche / droite** ou **Select** (6 niveaux, de 125 % à 50 %) ; le choix est
+mémorisé.
 
 ## Commandes
 
@@ -71,12 +72,13 @@ aides du jeu affichent le nom des boutons 3DS) :
 | A | Entrée |
 | B ou Start | Échap (retour) |
 | X | Tab |
-| Y | Clavier virtuel (nom du pilote, nom du vaisseau, recherche...) |
+| Y | Clavier virtuel quand il y a un champ de texte (nom du pilote, nom du vaisseau...) ; recherche dans la carte |
 | L (maintenu) | Maj (acheter/vendre par 5, etc.) |
 | R (maintenu) | Ctrl (acheter/vendre par 20, etc.) |
 | ZL / ZR | Page précédente / suivante |
 | C-Stick haut / bas | Molette de la souris |
-| Select | Grossissement de la loupe |
+| C-Stick gauche / droite | Grossissement de la loupe (moins / plus) |
+| Select | Grossissement de la loupe (cycle) |
 
 ## Installation
 
@@ -191,8 +193,8 @@ originaux.
 - Les plugins sont lus, mais leurs images (PNG/JPEG) sont décodées sur la console :
   c'est lent, et les images AVIF ne sont pas prises en charge.
 - La loupe des menus demande de se déplacer dans les grands écrans (boutiques).
-- Quelques aides du jeu citent des touches sans équivalent sur la 3DS (F1, F pour
-  chercher dans la carte : utiliser Y pour taper « f », puis le nom recherché).
+- Quelques aides du jeu citent des touches sans équivalent sur la 3DS (F1 ; pour F,
+  la recherche dans la carte, utiliser Y).
 - La fréquence d'images en vol dépend du nombre de vaisseaux : le jeu dessine moins
   d'images quand il est en retard, mais la simulation reste à vitesse normale.
 

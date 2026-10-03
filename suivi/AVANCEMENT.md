@@ -57,6 +57,17 @@ Mis à jour au fil de la session.
 11. GitHub Actions (`.github/workflows/release.yml`) : conversion (cache), build, publication
     du CIA dans la pré-release « latest » à chaque push, release nommée sur tag `v*`.
 
+12. Retours du premier test sur console (le jeu fonctionne !) :
+    - Y sans champ de texte faisait planter (les lettres tapées déclenchaient les
+      raccourcis du menu) → Y n'ouvre le clavier que pour un champ de texte
+      (dialogue avec saisie, conversation) ; dans la carte, Y ouvre la recherche ;
+      ailleurs, message « Pas de champ de texte ici ». Patch `0007` (DialogPanel).
+    - Quitter depuis le menu HOME restait bloqué : la boucle dessinait encore une
+      image après la demande de fermeture (GPU rendu au système) → sortie immédiate.
+      Réveil du thread de chargement des textures protégé par le mutex.
+    - Loupe : 6 niveaux (125 % → 50 %), C-Stick gauche/droite ou Select, mémorisé
+      dans `config/3ds lens.txt`, message à l'écran.
+
 Limite émulateur : pas de service `ir:rst` → ZL/ZR/C-Stick non testables (saut, atterrissage).
 
 ## Prochaines étapes
