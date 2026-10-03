@@ -50,6 +50,10 @@ Mis à jour au fil de la session.
    heap ≈ 64 Mo, le reste en mémoire linéaire (budget textures 31 → 41 Mo).
    Sous 52 Mo de heap libre, le jeu affiche « Not enough memory » (conseille le CIA).
 
+10. Version publication : `tools/make-release.sh` → `dist/endless-sky.cia` (82 Mo) avec
+    les données dans la romfs (option CMake `ES_ROMFS`). La romfs est prioritaire sur la SD.
+    Vérifié en émulateur (version .3dsx avec romfs, aucune donnée sur la SD) : menus, vol.
+
 Limite émulateur : pas de service `ir:rst` → ZL/ZR/C-Stick non testables (saut, atterrissage).
 
 ## Prochaines étapes

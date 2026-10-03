@@ -59,9 +59,9 @@ bool Platform::Init()
 
 	romfsMounted = R_SUCCEEDED(romfsInit());
 
-	if(FileExists(string(SD_ROOT) + "credits.txt"))
-		resourcePath = SD_ROOT;
-	else if(romfsMounted && FileExists(string(ROMFS_ROOT) + "credits.txt"))
+	// A release build carries the game data in its romfs, which then always
+	// matches the program. Otherwise the data is on the SD card.
+	if(romfsMounted && FileExists(string(ROMFS_ROOT) + "credits.txt"))
 		resourcePath = ROMFS_ROOT;
 	else
 		resourcePath = SD_ROOT;

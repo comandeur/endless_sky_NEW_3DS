@@ -6,3 +6,4 @@
 *.elf
 *.smdh
 __pycache__/
+/dist/

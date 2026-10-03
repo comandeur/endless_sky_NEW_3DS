@@ -80,19 +80,34 @@ aides du jeu affichent le nom des boutons 3DS) :
 
 ## Installation
 
-Il faut une **New 3DS ou New 2DS XL** avec un custom firmware (Luma3DS). Pour avoir
-du son, le firmware DSP doit avoir été extrait une fois avec l'outil *DSP1* (fichier
-`sdmc:/3ds/dspfirm.cdc`) ; c'est déjà le cas sur la plupart des consoles modées.
+Il faut une **New 3DS ou New 2DS XL** avec un custom firmware (Luma3DS) et **FBI**.
+Pour avoir du son, le firmware DSP doit avoir été extrait une fois avec l'outil *DSP1*
+(fichier `sdmc:/3ds/dspfirm.cdc`) ; c'est déjà le cas sur la plupart des consoles modées.
 
-1. Compiler le jeu et convertir les données (voir ci-dessous), ou récupérer une
-   version déjà compilée.
-2. Copier **le contenu** de `assets-out/endless-sky/` dans `sdmc:/3ds/endless-sky/`.
-   Il doit y avoir par exemple `sdmc:/3ds/endless-sky/credits.txt` et
-   `sdmc:/3ds/endless-sky/images.pak` (environ 80 Mo).
-3. **Version recommandée : le CIA.** Copier `endless-sky.cia` sur la carte SD,
-   l'installer avec **FBI**, puis lancer *Endless Sky* depuis le menu HOME.
-4. Autre possibilité : copier `endless-sky.3dsx` dans `sdmc:/3ds/` et le lancer depuis
-   le Homebrew Launcher.
+### Version publication (recommandée) : un seul fichier
+
+`endless-sky.cia` (environ 82 Mo) contient le jeu **et** ses données.
+
+1. Copier `endless-sky.cia` n'importe où sur la carte SD (par exemple à la racine).
+2. Sur la console, ouvrir **FBI** → *SD* → `endless-sky.cia` → *Install CIA*.
+3. Lancer *Endless Sky* depuis le menu HOME.
+
+Le fichier `.cia` peut ensuite être supprimé de la carte SD. Pour mettre à jour,
+installer le nouveau CIA par-dessus : les sauvegardes sont conservées.
+
+Pour produire ce fichier : `tools/make-release.sh` (résultat dans `dist/`).
+
+### Version développement : programme et données séparés
+
+Pratique quand on recompile souvent : le programme fait 3 Mo, les données ne bougent pas.
+
+1. Copier **le contenu** de `assets-out/endless-sky/` dans `sdmc:/3ds/endless-sky/`
+   (il doit y avoir par exemple `sdmc:/3ds/endless-sky/images.pak`).
+2. Installer `build/endless-sky.cia` avec FBI, ou copier `build/endless-sky.3dsx`
+   dans `sdmc:/3ds/` et le lancer depuis le Homebrew Launcher.
+
+Si un CIA contient des données, il utilise toujours les siennes, même si d'autres
+données sont présentes sur la carte SD.
 
 **Pourquoi le CIA ?** Les données du jeu occupent environ 50 Mo de mémoire une fois
 chargées, plus la mémoire des textures. Le CIA demande le mode mémoire de la New 3DS

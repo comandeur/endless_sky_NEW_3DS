@@ -70,7 +70,20 @@ ctr_generate_smdh(endless-sky.smdh
 	DESCRIPTION "Space exploration, trading and combat"
 	AUTHOR "Endless Sky contributors / 3DS port"
 	ICON "${CMAKE_SOURCE_DIR}/port/meta/icon.png")
-ctr_create_3dsx(endless-sky SMDH endless-sky.smdh)
+# Release builds can embed the converted game data (tools/convert-assets.sh)
+# in the romfs, so that a single file is enough:
+#   cmake -DES_ROMFS=assets-out/endless-sky ...
+set(ES_ROMFS "" CACHE PATH "Converted game data to embed in the romfs (empty: data on the SD card)")
+if(ES_ROMFS)
+	get_filename_component(ES_ROMFS "${ES_ROMFS}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
+	if(NOT EXISTS "${ES_ROMFS}/credits.txt" OR NOT EXISTS "${ES_ROMFS}/images.pak")
+		message(FATAL_ERROR "ES_ROMFS: ${ES_ROMFS} does not contain converted game data.")
+	endif()
+	message(STATUS "Embedding the game data from ${ES_ROMFS}")
+	ctr_create_3dsx(endless-sky SMDH endless-sky.smdh ROMFS "${ES_ROMFS}")
+else()
+	ctr_create_3dsx(endless-sky SMDH endless-sky.smdh)
+endif()
 
 # The CIA version (installed to the HOME Menu), which gets the New 3DS memory
 # mode. It needs makerom and bannertool, which the Docker image provides.
@@ -84,13 +97,26 @@ if(MAKEROM AND BANNERTOOL)
 			-o endless-sky.bnr
 		DEPENDS "${CMAKE_SOURCE_DIR}/port/meta/banner.png" "${CMAKE_SOURCE_DIR}/port/meta/banner.wav"
 		VERBATIM)
+	# The RSF, plus the romfs location for release builds.
+	set(CIA_RSF "${CMAKE_CURRENT_BINARY_DIR}/endless-sky.rsf")
+	file(READ "${CMAKE_SOURCE_DIR}/port/meta/endless-sky.rsf" RSF_TEXT)
+	if(ES_ROMFS)
+		string(APPEND RSF_TEXT "\nRomFs:\n  RootPath: \"${ES_ROMFS}\"\n")
+	endif()
+	file(WRITE "${CIA_RSF}" "${RSF_TEXT}")
+	set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/port/meta/endless-sky.rsf")
+	# Rebuild the CIA when the embedded data changes.
+	set(CIA_DATA "")
+	if(ES_ROMFS)
+		set(CIA_DATA "${ES_ROMFS}/images.pak" "${ES_ROMFS}/images.idx" "${ES_ROMFS}/credits.txt")
+	endif()
 	add_custom_command(OUTPUT endless-sky.cia
 		COMMAND "${MAKEROM}" -f cia -o endless-sky.cia -target t -exefslogo
 			-elf "$<TARGET_FILE:endless-sky>"
-			-rsf "${CMAKE_SOURCE_DIR}/port/meta/endless-sky.rsf"
+			-rsf "${CIA_RSF}"
 			-icon "${CMAKE_CURRENT_BINARY_DIR}/endless-sky.smdh"
 			-banner endless-sky.bnr
-		DEPENDS endless-sky endless-sky.bnr "${CMAKE_SOURCE_DIR}/port/meta/endless-sky.rsf"
+		DEPENDS endless-sky endless-sky.bnr "${CMAKE_SOURCE_DIR}/port/meta/endless-sky.rsf" ${CIA_DATA}
 			"${CMAKE_CURRENT_BINARY_DIR}/endless-sky.smdh"
 		VERBATIM)
 	add_custom_target(cia ALL DEPENDS endless-sky.cia)
