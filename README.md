@@ -86,7 +86,9 @@ Pour avoir du son, le firmware DSP doit avoir été extrait une fois avec l'outi
 
 ### Version publication (recommandée) : un seul fichier
 
-`endless-sky.cia` (environ 82 Mo) contient le jeu **et** ses données.
+`endless-sky.cia` (environ 82 Mo) contient le jeu **et** ses données. Il est construit
+automatiquement par GitHub à chaque modification : le télécharger depuis la page
+**Releases** du dépôt (version « latest »).
 
 1. Copier `endless-sky.cia` n'importe où sur la carte SD (par exemple à la racine).
 2. Sur la console, ouvrir **FBI** → *SD* → `endless-sky.cia` → *Install CIA*.

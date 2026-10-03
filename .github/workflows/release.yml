@@ -1,0 +1,82 @@
+# Builds the single-file release (endless-sky.cia with the game data inside)
+# and publishes it on the Releases page:
+#   - every push: the "latest" pre-release is replaced by the new build;
+#   - a tag v*: a release with that name.
+# It can also be started by hand from the Actions tab ("Run workflow").
+name: Build 3DS release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['**']
+    tags: ['v*']
+    paths-ignore:
+      - '**.md'
+      - 'suivi/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Check out the port and Endless Sky
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Identify the game version
+        id: upstream
+        run: echo "sha=$(git -C upstream rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Converting the images takes a long time; the converter keeps a per-image
+      # cache next to its output, so later builds only convert what changed.
+      - name: Restore the converted game data
+        uses: actions/cache@v4
+        with:
+          path: assets-out
+          key: assets-${{ steps.upstream.outputs.sha }}-${{ hashFiles('tools/assets/**', 'port/data/**') }}
+          restore-keys: |
+            assets-${{ steps.upstream.outputs.sha }}-
+            assets-
+
+      - name: Convert the game data
+        run: tools/convert-assets.sh
+
+      - name: Build the release
+        run: tools/make-release.sh
+
+      - name: Keep the build with this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: endless-sky-3ds
+          path: |
+            dist/endless-sky.cia
+            dist/endless-sky.3dsx
+          compression-level: 0
+
+      - name: Publish the "latest" pre-release
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest dist/endless-sky.cia dist/endless-sky.3dsx \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "Dernière version (build automatique)" \
+            --notes-file .github/release-notes.md
+
+      - name: Publish the tagged release
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/endless-sky.cia dist/endless-sky.3dsx \
+            --title "Endless Sky 3DS $GITHUB_REF_NAME" \
+            --notes-file .github/release-notes.md

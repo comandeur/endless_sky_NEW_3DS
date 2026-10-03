@@ -54,6 +54,9 @@ Mis à jour au fil de la session.
     les données dans la romfs (option CMake `ES_ROMFS`). La romfs est prioritaire sur la SD.
     Vérifié en émulateur (version .3dsx avec romfs, aucune donnée sur la SD) : menus, vol.
 
+11. GitHub Actions (`.github/workflows/release.yml`) : conversion (cache), build, publication
+    du CIA dans la pré-release « latest » à chaque push, release nommée sur tag `v*`.
+
 Limite émulateur : pas de service `ir:rst` → ZL/ZR/C-Stick non testables (saut, atterrissage).
 
 ## Prochaines étapes
